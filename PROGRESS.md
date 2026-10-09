@@ -14,8 +14,8 @@
 | M2 GUI 骨架 | ✅ 完成（tag: m2） | 2026-10 pytest 37/37 全绿 |
 | M3 后台执行 | ✅ 完成（tag: m3） | 2026-10 pytest 43/43 ×2 遍稳定 |
 | M4 结果体验 | ✅ 完成（tag: m4） | 2026-10 pytest 58/58 ×4 遍稳定 |
-| M5 打包交付 | ⬜ 未开始 | 下一个 |
-| M6 灰度试运行 | ⬜ 未开始 | |
+| M5 打包交付 | ⚠️ 代码/打包完成（tag: m5） | 2026-10 pytest 67/67 ×2 遍稳定；**异机验收待人工**（见 M5 成果末段） |
+| M6 灰度试运行 | ⬜ 未开始 | 需人：交付同事真机试用一周 |
 
 ## 环境说明（M0 结论）
 
@@ -105,25 +105,64 @@ Worker 完善：取消时终止 WPS 子进程（core 已支持 cancel 回调）�
   以及 **GUI 驱动的真实端到端**：填根目录 → `_start()` → worker 完成 → 结果对话框显示真实页数/体积/输出路径。
 - **全量验证**：58 passed ×4 遍稳定（29~35s）。
 
-## M5 计划（下一里程碑）
+## M5 成果（打包交付，2026-10，tag: m5）
 
-PyInstaller 单 exe：`build/a4merger.spec`（version resource、manifest longPathAware、
-字体 datas、pypdf/Pillow/fpdf2/msoffcrypto 隐藏导入）、`--windowed` 无黑框，
-在「装 WPS / 未装 WPS」两类机器实机验证（无 Python、断网、长路径、双实例）。
+- **产物**：`dist/A4合并助手.exe`（78.3 MB，onefile + windowed 无控制台黑框；
+  PE 子系统 = 2 已由测试断言）。打包命令（工程根目录，全局 Python 3.12.10）：
+  `python -m PyInstaller --noconfirm --clean --distpath dist --workpath build\pyi_work build\a4merger.spec`
+- **build/a4merger.spec**：version resource 1.0.0.0、longPathAware+DPI manifest、
+  `fonts/NotoSansCJKsc-Regular.otf` 进 datas、隐藏导入 pypdf/PIL/fpdf/msoffcrypto、
+  剪掉 QtWebEngine/QtQuick 等无用模块；构建时间戳临时写入 `app/diagnostics.py`，
+  **try/finally 保证打包后还原**（仓库不被污染）。
+- **踩坑记录（都已在代码注释里写明）**：
+  1. manifest 里**不要**写 `assemblyIdentity` → 否则 SideBySide 错误 WinError 14001，exe 无法启动；
+  2. **不要排除 `unittest`** → fpdf2 的 `fpdf/sign.py` 依赖它，排除后 `import fpdf` 失败、
+     "纯 Python 引擎"整体失效（无 WPS 机器直接不可用）；`tests/test_frozen_exe.py` 已加回归；
+  3. PyInstaller onefile 依赖可写的 `%TEMP%`；本机沙箱不放开该目录时启动会报
+     `[PYI-xxxx:ERROR] Could not create temporary directory!`（测试把 TMP/TEMP 指向工作区内）；
+  4. 打包版退出阶段曾在 onefile 下偶发 0xC0000409 → `app/main._finish()` 显式释放单实例锁 +
+     `logging.shutdown()` + 打包版 `os._exit(rc)`；正常使用（非 --smoke）不受影响；
+  5. 对 GUI 子系统 exe 用 `stderr=PIPE` 抓输出会随机卡住 → 测试统一重定向到文件。
+- **core/longpath.py（计划 3.11.3）**：`LongPathsEnabled` 注册表探测、启动中文提示
+  （未开启时提示"路径超过 260 字符可能无法处理"）、`\\?\` 扩展路径工具、超长路径中文报错文案；
+  状态栏新增「长路径：已开启/未开启」指示。
+- **app/diagnostics.py**：构建时间（打包写入）、frozen 标记、依赖版本、长路径状态、诊断包系统信息；
+  关于对话框显示版本号/构建时间/依赖版本/更新方式。
+- **app/main.py**：`--smoke-wait=毫秒`；`--auto`（仅 `A4_AUTOMATION=1` 时生效）打包验收自动化：
+  自动填目录→合并→导出验收 JSON（状态栏/引擎/长路径/成品页数体积/失败清单/结果对话框内容/依赖守卫）→退出。
+- **core/runner.py**：无法转换（需 WPS）的文件不再进入后续 WPS 轮次，失败清单不再出现重复项。
+- **tests/test_frozen_exe.py（9 例）**：版本资源、PE 子系统 GUI、manifest 内嵌、冒烟退出+启动提示、
+  单实例拦截（双实例快速退出）、无 pip 守卫（`请重新安装《A4 合并助手》`）、
+  模式A 全流程（真实 A4 尺寸 595.276×841.89 / 页数 / 报告 / 结果对话框）、
+  模式B（输出目录在根目录内不被当素材）、仅纯 Python 引擎全链路（字体 + fpdf2 兜底）。
+- **全量验证**：`pytest tests/` **67 passed ×2 遍**（74 s/遍），含 58 例开发期用例 + 9 例打包版用例。
+- **⚠️ M5 验收缺口（必须人工完成，本机无法覆盖）**：
+  1. **无 Python/无 pip 的绿色机器**上双击 exe 全流程 —— 本机必然带 Python，无法证明；
+     （可验证的部分已覆盖：exe 单文件、无黑框、依赖内置、frozen 下绝不调 pip、断网不影响）
+  2. **未装 WPS 的机器**：Office 文件应明确提示"需要安装 WPS"，图片/文本/PDF 仍可用 —— 本机装了 WPS；
+     （纯 Python 引擎路径已用「仅纯 Python」模式在打包版上验证通过）
+  3. 真机目视：界面中文显示、长路径提示、双击定位/打开目录/导出 TXT 的手感。
+  建议：把 `dist/A4合并助手.exe` 拷到一台干净 Win10/11 同事机按上表逐条走一遍，再进 M6。
+
+## M6 计划（下一里程碑，需人工参与）
+
+交付 1~2 位同事真机试用一周；收集诊断包报障 → 修复 → 回归；通过后全员铺开。
 
 ## 遗留问题 / 注意点
 
 1. 全局环境装了样例生成工具（python-docx/openpyxl/python-pptx），仅供 make_samples 使用，不进运行时依赖。
-2. 样例里 encrypted 场景暂只有加密 PDF；加密 Office（docx 加密）待 M1 评估生成方式（msoffcrypto 仅支持解密）。
+2. 样例里 encrypted 场景暂只有加密 PDF；加密 Office（docx 加密）待评估生成方式（msoffcrypto 仅支持解密）。
 3. 字体已提交 git（16.4MB），仓库变大可接受（离线可复现优先）。
-4. `build/` 目录已有历史残留（早期 PyInstaller 输出？）+ 本次的 `build/shot_results_dialog.py`
-   （离屏渲染结果对话框截图，人工核对版面用；截图目录已加 .gitignore）。M5 前建议确认 `build/` 是否入库。
-5. 回归稳定性加固（M4 顺带修复，非功能变更）：`test_worker_cancel_quick` 需把队列里
-   `finished_signal` 处理干净再断言；`test_single_instance_lock` 改为两实例同时启动 + 3 次重试与 stderr 诊断；
-   `test_worker_password_flow/skip` 改用临时目录（不再写入样例库）。
-6. 结果对话框真机显示效果仍待 M6 灰度确认（offscreen 下已核对控件与文本）。
+4. `build/` 只保留打包源码（`a4merger.spec`、`make_version_info.py`）并入库；
+   `version_info.txt` / `a4merger.manifest` / `pyi_work/` / `frozen_work/` / `localappdata/` /
+   `pyi_tmp/` 均为生成物，已 gitignore。`dist/` 同样 gitignore（exe 不进仓库，靠 spec 复现）。
+5. 回归稳定性加固（M4/M5 顺带修复，非功能变更）：取消用例需把队列里 `finished_signal` 处理干净；
+   双实例用例两实例同时启动 + 重试；worker 加密样例走临时目录；打包版用例统一「先清残留实例 + stderr 落文件」。
+6. 结果对话框与主界面真机显示效果仍待 M6 灰度确认（offscreen 下已核对控件与文本）。
+7. 计划 3.4 建议用 Python 3.11 打包；实际采用与 requirements 锁定的 **3.12.10**（PyInstaller 6.22.3
+   官方支持 3.8~3.14，本机打包与 frozen 验收全绿）。如需严格对齐计划，可另建 3.11 环境重打包验证。
 
 ## 下一步
 
-**M5 打包交付**：按上节 M5 计划做 PyInstaller 单 exe 与两类机器实机验证；
-M4 已完成，验收标准（计划 4 节：总结对话框/失败清单双击定位/导出 TXT/状态栏）全部满足。
+M5 代码与打包已完成并全量回归通过；**下一步是上节「M5 验收缺口」的三项人工异机验收**，
+通过后进 M6 灰度试运行（交付同事试用一周）。

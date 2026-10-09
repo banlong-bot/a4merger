@@ -10,8 +10,8 @@
 | 里程碑 | 状态 | 备注 |
 |---|---|---|
 | M0 环境准备 | ✅ 完成（tag: m0） | 2026-02 基线建成 |
-| M1 核心重构 | ⬜ 未开始 | 下一个 |
-| M2 GUI 骨架 | ⬜ 未开始 | |
+| M1 核心重构 | ✅ 完成（tag: m1） | 2026-10 pytest 28/28 全绿 |
+| M2 GUI 骨架 | ⬜ 未开始 | 下一个 |
 | M3 后台执行 | ⬜ 未开始 | |
 | M4 结果体验 | ⬜ 未开始 | |
 | M5 打包交付 | ⬜ 未开始 | |
@@ -35,6 +35,24 @@
   在 pypdf 6.19.0 下 `merge_transformed_page` 稳定复现 `KeyError: '/Rect'`，无警告。
 - EXIF=6、GBK 可解、加密 PDF is_encrypted=True 均已验证。
 - 基线脚本 dry-run 冒烟通过（中文路径、自然排序、2 目标文件夹枚举正确）。
+
+## M1 成果（核心重构，2026-10）
+
+- **core 包**（不依赖 Qt，回调化）：
+  - util.py（自然排序/控制台/PowerShell 查找）、types.py（MergeConfig/回调接口/FolderResult）、
+    deps.py（frozen 分流）、encrypt.py（PDF/Office 加密检测与解密）、
+    collect.py（收集/排除规则/双模式输出计划 plan_outputs/冲突序号消解）、
+    converters/{base,manager,backend_wps,backend_native}.py。
+  - backend_wps.py：WPS_WORKER_PS **原样迁移** + Popen 轮询版 run_wps_worker（取消 terminate，≤0.2s 响应）。
+  - backend_native.py：图片 Pillow（exif_transpose 保留）+ 文本 fpdf2（编码探测 GBK→GB18030 + 开源字体）。
+  - merge.py：原样迁移 fit_box/merge_to_a4 + **3.10 三层容错**（_sanitize_annots 无效批注剥离 + 页级隔离 + 文件级隔离）。
+  - report.py：合并报告.txt（UTF-8-sig）。runner.py：双模式/--only（相对路径+歧义报错）/取消/失败清单。
+- **cli.py**：legacy 全部参数兼容 + 新增 --output-dir / --only / --engine / --no-report / --version。
+- **pytest 28/28 全绿**（14 秒基线）：内容级一致对照（cli vs legacy）、黄金样本（A4 尺寸/页数）、
+  坏批注修复、43 文件不连坐、截断文件隔离、加密有/无密码、模式B 统一/冲突序号/防套娃、
+  报告防误扫、lookalike 两级场景、--only 歧义、模板校验、GBK 解码、自然排序、WPS 全链路集成（本机实转）。
+- **M1 验收对照结果**：新 cli 与 legacy 对同一 pure_pdf 输入产出**内容级一致**（页数/每页尺寸/内容流 hash 全同）。
+- mixed 全链路实测：WPS 真实转换 docx/xlsx/pptx/jpg/GBK txt 成功，3 目标 3 成品 + 报告。
 
 ## 遗留问题 / 注意点
 

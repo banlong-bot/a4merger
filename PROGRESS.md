@@ -13,10 +13,8 @@
 | M1 核心重构 | ✅ 完成（tag: m1） | 2026-10 pytest 28/28 全绿 |
 | M2 GUI 骨架 | ✅ 完成（tag: m2） | 2026-10 pytest 37/37 全绿 |
 | M3 后台执行 | ✅ 完成（tag: m3） | 2026-10 pytest 43/43 ×2 遍稳定 |
-| M4 结果体验 | ⬜ 未开始 | 下一个 |
-| M3 后台执行 | ⬜ 未开始 | |
-| M4 结果体验 | ⬜ 未开始 | |
-| M5 打包交付 | ⬜ 未开始 | |
+| M4 结果体验 | ✅ 完成（tag: m4） | 2026-10 pytest 58/58 ×4 遍稳定 |
+| M5 打包交付 | ⬜ 未开始 | 下一个 |
 | M6 灰度试运行 | ⬜ 未开始 | |
 
 ## 环境说明（M0 结论）
@@ -88,19 +86,44 @@ Worker 完善：取消时终止 WPS 子进程（core 已支持 cancel 回调）�
   稳定性加固：offscreen 子进程偶发崩溃 → smoke 重试 3 次；worker 流程断言收敛到最终结果。
 - **全量验证**：43 passed ×2 遍（28~31s）。
 
-## M4 计划（下一里程碑）
+## M4 成果（结果体验，2026-10，tag: m4）
 
-完成总结对话框（成功/失败清单表格、双击定位、导出 TXT、打开输出目录/运行报告按钮）、
-状态栏完善。M2 的 _on_finished 目前是简版 QMessageBox，M4 换成完整对话框。
+- **app/results_dialog.py（新增）**：完成总结对话框（计划 2.2「完成总结对话框」）
+  - 头部：成功 N/M 个目标、共 X 页、失败 Y 个文件、耗时；根目录 + 输出目录一行；
+  - 页签①成功：目标文件夹 / 页数 / 文件大小（真实体积，预览模式显示"—（预览）"）/ 输出路径，双击定位成品；
+  - 页签②失败：目标 / 文件名 / 原因 / 跳过页数 / 完整路径，另列「未生成的目标文件夹」，双击 `explorer /select` 定位；
+  - 页签③跳过的成品：被当作上次产物的同名 PDF + 中文提示（勾选「同名成品」即可并入）；
+  - 页签④忽略的类型：不支持类型清单 + 「无素材，未生成」的目标文件夹；
+  - 按钮：打开输出目录（模式B→输出目录；模式A→根目录）、打开运行报告、导出失败清单 TXT、导出运行总结 TXT（UTF-8-sig，记事本可读）、关闭；
+  - 纯函数 `build_failures_text` / `build_summary_text` / `format_size` / `safe_size` / `output_dir_for` 与 GUI 解耦，便于单测。
+- **app/ui_main.py**：`_on_finished` 用完整对话框替换 M2 简版 QMessageBox；
+  状态栏拆为三段（引擎探测 / 任务状态[着色] / 版本号，计划 2.2 + 3.11.10）；
+  运行结束同步保存配置记忆；`smoke` 模式下结果对话框不阻塞 exec。
+- **测试 tests/test_results_dialog.py（15 例）**：大小格式化、模式定位、四页签计数与内容、
+  双击定位（monkeypatch 拦截，不真开资源管理器）、导出两份 TXT（校验 BOM/内容）、
+  预览模式文案、空清单提示、状态栏三要素、`None` 结果中文提示，
+  以及 **GUI 驱动的真实端到端**：填根目录 → `_start()` → worker 完成 → 结果对话框显示真实页数/体积/输出路径。
+- **全量验证**：58 passed ×4 遍稳定（29~35s）。
+
+## M5 计划（下一里程碑）
+
+PyInstaller 单 exe：`build/a4merger.spec`（version resource、manifest longPathAware、
+字体 datas、pypdf/Pillow/fpdf2/msoffcrypto 隐藏导入）、`--windowed` 无黑框，
+在「装 WPS / 未装 WPS」两类机器实机验证（无 Python、断网、长路径、双实例）。
 
 ## 遗留问题 / 注意点
 
 1. 全局环境装了样例生成工具（python-docx/openpyxl/python-pptx），仅供 make_samples 使用，不进运行时依赖。
 2. 样例里 encrypted 场景暂只有加密 PDF；加密 Office（docx 加密）待 M1 评估生成方式（msoffcrypto 仅支持解密）。
 3. 字体已提交 git（16.4MB），仓库变大可接受（离线可复现优先）。
+4. `build/` 目录已有历史残留（早期 PyInstaller 输出？）+ 本次的 `build/shot_results_dialog.py`
+   （离屏渲染结果对话框截图，人工核对版面用；截图目录已加 .gitignore）。M5 前建议确认 `build/` 是否入库。
+5. 回归稳定性加固（M4 顺带修复，非功能变更）：`test_worker_cancel_quick` 需把队列里
+   `finished_signal` 处理干净再断言；`test_single_instance_lock` 改为两实例同时启动 + 3 次重试与 stderr 诊断；
+   `test_worker_password_flow/skip` 改用临时目录（不再写入样例库）。
+6. 结果对话框真机显示效果仍待 M6 灰度确认（offscreen 下已核对控件与文本）。
 
-## 下一步（M1 核心重构）
+## 下一步
 
-按计划 4 节 M1：拆 core 包（types/collect/encrypt/converters/merge/report/runner/deps）→
-回调接口替换 print/input → 输出双模式 → 损坏 PDF 容错（3.10）→ txt 字体与编码（3.11.1）→
-pytest 黄金样本（3.11.13）→ cli.py 回归对照（内容级一致）。
+**M5 打包交付**：按上节 M5 计划做 PyInstaller 单 exe 与两类机器实机验证；
+M4 已完成，验收标准（计划 4 节：总结对话框/失败清单双击定位/导出 TXT/状态栏）全部满足。

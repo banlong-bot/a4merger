@@ -1,0 +1,8 @@
+# A4 合并助手 —— 开发/打包/测试依赖（在 requirements.txt 之上追加）
+-r requirements.txt
+pytest==9.1.1
+pyinstaller==6.22.3
+# 以下仅用于生成回归样例（tests/make_samples.py），不进入运行时
+python-docx==1.2.0
+openpyxl==3.1.5
+python-pptx==1.0.2

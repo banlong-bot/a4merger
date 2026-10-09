@@ -1,0 +1,7 @@
+# A4 合并助手 —— 运行时依赖（全量锁定，见计划 3.11.12）
+# 环境：Python 3.12（Windows 10/11 x64）
+pypdf==6.19.0
+Pillow==12.3.0
+fpdf2==2.8.9
+msoffcrypto-tool==6.0.0
+PySide6==6.12.0

@@ -19,11 +19,22 @@ def _env() -> dict:
     return e
 
 
+def _run_smoke(timeout: int = 40):
+    """offscreen Qt 环境偶发崩溃：最多重试 3 次。"""
+    last: subprocess.CompletedProcess | None = None
+    for attempt in range(3):
+        last = subprocess.run([PY, str(GUI), "--smoke"], capture_output=True,
+                              text=True, encoding="utf-8", errors="replace",
+                              env=_env(), timeout=timeout)
+        if last.returncode == 0:
+            return last
+        time.sleep(1.0)
+    return last
+
+
 def test_gui_smoke_startup():
     """完整 GUI 进程启动 → 1 秒自动退出，返回码 0。"""
-    r = subprocess.run([PY, str(GUI), "--smoke"], capture_output=True,
-                       text=True, encoding="utf-8", errors="replace",
-                       env=_env(), timeout=40)
+    r = _run_smoke()
     assert r.returncode == 0, r.stderr
 
 

@@ -267,7 +267,8 @@ def _process_folder(folder: Path, out_path: Path, cfg: MergeConfig, tmp_root: Pa
                         by_out[key] = item
             pending = [j for j in pending
                        if not by_out.get(j["out"], {}).get("ok")
-                       and "超时" not in str(by_out.get(j["out"], {}).get("error", ""))]
+                       and "超时" not in str(by_out.get(j["out"], {}).get("error", ""))
+                       and "已取消" not in str(by_out.get(j["out"], {}).get("error", ""))]
 
         # 3) 组装 sources
         sources: list[Path] = []

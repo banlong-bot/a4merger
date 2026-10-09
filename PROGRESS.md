@@ -12,7 +12,8 @@
 | M0 环境准备 | ✅ 完成（tag: m0） | 2026-02 基线建成 |
 | M1 核心重构 | ✅ 完成（tag: m1） | 2026-10 pytest 28/28 全绿 |
 | M2 GUI 骨架 | ✅ 完成（tag: m2） | 2026-10 pytest 37/37 全绿 |
-| M3 后台执行 | ⬜ 未开始 | 下一个 |
+| M3 后台执行 | ✅ 完成（tag: m3） | 2026-10 pytest 43/43 ×2 遍稳定 |
+| M4 结果体验 | ⬜ 未开始 | 下一个 |
 | M3 后台执行 | ⬜ 未开始 | |
 | M4 结果体验 | ⬜ 未开始 | |
 | M5 打包交付 | ⬜ 未开始 | |
@@ -73,6 +74,24 @@
 
 Worker 完善：取消时终止 WPS 子进程（core 已支持 cancel 回调）、密码弹窗（ask_password 信号 →
 模态输入框，3 次重试，回车跳过）、密码记住走 DPAPI（ctypes CryptProtectData，3.11.9）。
+
+## M3 成果（后台执行，2026-10）
+
+- **core/dpapi.py**：ctypes 直调 CryptProtectData/CryptUnprotectData（零依赖）；非 Windows 退化
+  base64 明文（"*" 前缀标记）；测试：往返一致、Windows 密文不含明文。
+- **runner.py**：WPS 重试过滤新增"已取消"（取消后不再空等重试轮）。
+- **worker.py**：密码弹窗跨线程回调——password_requested 信号 + submit_password(Event) 回传，
+  等待期间可被取消打断；cancel() 置位（core 侧轮询到后立即 terminate WPS 子进程，3.11.4）。
+- **ui_main.py**：密码输入槽（QInputDialog 3 次重试/取消=跳过，密码正确回显日志）；
+  "记住密码"复选框（DPAPI 加密存 QSettings，本机可解拷贝无效；取消勾选即清除）。
+- **测试**：test_dpapi（4 例）、test_worker（取消快速结束 <10s / 密码流程 3 页 / 跳过 1 页+failure）；
+  稳定性加固：offscreen 子进程偶发崩溃 → smoke 重试 3 次；worker 流程断言收敛到最终结果。
+- **全量验证**：43 passed ×2 遍（28~31s）。
+
+## M4 计划（下一里程碑）
+
+完成总结对话框（成功/失败清单表格、双击定位、导出 TXT、打开输出目录/运行报告按钮）、
+状态栏完善。M2 的 _on_finished 目前是简版 QMessageBox，M4 换成完整对话框。
 
 ## 遗留问题 / 注意点
 

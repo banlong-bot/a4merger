@@ -11,8 +11,8 @@ from pathlib import Path
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (QCheckBox, QComboBox, QDoubleSpinBox, QFileDialog,
-                               QFormLayout, QGroupBox, QHBoxLayout, QLabel,
-                               QLineEdit, QListWidget, QListWidgetItem,
+                               QFormLayout, QGroupBox, QHBoxLayout, QInputDialog,
+                               QLabel, QLineEdit, QListWidget, QListWidgetItem,
                                QMainWindow, QMenuBar, QMessageBox, QPlainTextEdit,
                                QProgressBar, QPushButton, QRadioButton, QScrollArea,
                                QSpinBox, QSplitter, QVBoxLayout, QWidget)
@@ -159,13 +159,15 @@ class MainWindow(QMainWindow):
         gb_enc = QGroupBox("加密文件")
         f3 = QFormLayout(gb_enc)
         self.pt_passwords = QPlainTextEdit()
-        self.pt_passwords.setPlaceholderText("每行一个密码（可用逗号分隔多个）\n默认不保存密码（3.11.9）")
+        self.pt_passwords.setPlaceholderText("每行一个密码（可用逗号分隔多个）")
         self.pt_passwords.setMaximumHeight(80)
         f3.addRow("打开密码", self.pt_passwords)
         btn_pwfile = QPushButton("导入密码文件…")
         f3.addRow("", btn_pwfile)
         self.cb_no_prompt = QCheckBox("遇到加密文件直接跳过（不弹窗）")
         f3.addRow("", self.cb_no_prompt)
+        self.cb_remember_pw = QCheckBox("记住密码（Windows 本机加密保存，DPAPI）")
+        f3.addRow("", self.cb_remember_pw)
         lv.addWidget(gb_enc)
         lv.addStretch(1)
 
@@ -262,10 +264,13 @@ class MainWindow(QMainWindow):
         self.sp_timeout.setValue(s.get_int("wps_timeout", 600))
         self.cb_lookalike.setChecked(s.get_bool("include_lookalikes", False))
         self.cb_no_prompt.setChecked(s.get_bool("no_prompt", False))
+        self.cb_remember_pw.setChecked(s.get_bool("remember_pw", False))
         self.cb_dryrun.setChecked(s.get_bool("dry_run", False))
-        pws = s.get_str_list("passwords")
-        if pws:
-            self.pt_passwords.setPlainText("\n".join(pws))
+        tokens = s.get_str_list("passwords")
+        if tokens:
+            from core.dpapi import dpapi_unprotect
+            self.pt_passwords.setPlainText(
+                "\n".join(dpapi_unprotect(t) for t in tokens))
 
     def _save_settings(self) -> None:
         s = self.settings
@@ -288,8 +293,14 @@ class MainWindow(QMainWindow):
                    if self.lw_targets.item(i).checkState() == Qt.Checked]
         s.set_str_list("checked_targets", checked)
         pws = [x.strip() for x in self.pt_passwords.toPlainText().replace("，", ",").splitlines() if x.strip()]
-        if pws:
-            s.set_str_list("passwords", pws)     # M3 起改为 DPAPI；当前先记忆（本地明文并提示）
+        if pws and self.cb_remember_pw.isChecked():
+            # DPAPI 加密后再保存（3.11.9）：本机本用户可解，拷贝走无效
+            from core.dpapi import dpapi_protect
+            s.set_str_list("passwords", [dpapi_protect(p) for p in pws])
+            s.set("remember_pw", True)
+        else:
+            self.settings.qs.remove("passwords")
+            self.settings.qs.remove("remember_pw")
 
     def closeEvent(self, ev) -> None:            # noqa: N802
         self._save_settings()
@@ -447,7 +458,35 @@ class MainWindow(QMainWindow):
         self.worker.log_signal.connect(self._append_log)
         self.worker.progress_signal.connect(self._on_progress)
         self.worker.finished_signal.connect(self._on_finished)
+        self.worker.password_requested.connect(self._on_password_request)
         self.worker.start()
+
+    def _on_password_request(self, payload: dict) -> None:
+        """主线程：加密文件密码输入框（最多 3 次，取消/失败=跳过该文件）。"""
+        path = payload.get("path")
+        verify = payload.get("verify")
+        if path is None or not callable(verify) or self.worker is None:
+            return
+        self._append_log("warn", f"「{path.name}」已加密，请在弹出的窗口输入密码…")
+        for _ in range(3):
+            text, ok = QInputDialog.getText(
+                self, "输入密码",
+                f"「{path.name}」已加密，需要打开密码\n（点击「取消」＝跳过这个文件）",
+                QLineEdit.Password)
+            if not ok:
+                self.worker.submit_password(None)
+                self._append_log("info", f"已跳过 {path.name}（未输入密码）")
+                return
+            try:
+                if verify(text):
+                    self.worker.submit_password(text)
+                    self._append_log("ok", f"{path.name}：密码正确")
+                    return
+            except Exception:
+                pass
+            QMessageBox.warning(self, "密码错误", "密码不正确，请重试。")
+        self.worker.submit_password(None)
+        self._append_log("warn", f"已跳过 {path.name}（3 次密码均不正确）")
 
     def _cancel(self) -> None:
         if self.worker is not None:

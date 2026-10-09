@@ -1,0 +1,555 @@
+"""app/ui_main.py —— 主窗口（M2 GUI 骨架）。
+
+包含：参数表单（根目录/目标勾选/输出模式/模板实时校验/引擎/密码）、
+日志区（着色 + 容量截断 + 自动滚动）、两级进度条、状态栏（引擎探测 + 版本）、
+诊断导出与关于对话框。
+"""
+from __future__ import annotations
+
+from pathlib import Path
+
+from PySide6.QtCore import Qt, QTimer
+from PySide6.QtGui import QColor
+from PySide6.QtWidgets import (QCheckBox, QComboBox, QDoubleSpinBox, QFileDialog,
+                               QFormLayout, QGroupBox, QHBoxLayout, QLabel,
+                               QLineEdit, QListWidget, QListWidgetItem,
+                               QMainWindow, QMenuBar, QMessageBox, QPlainTextEdit,
+                               QProgressBar, QPushButton, QRadioButton, QScrollArea,
+                               QSpinBox, QSplitter, QVBoxLayout, QWidget)
+
+from app.diagnostics import build_diagnostic_zip, current_log_file, engine_probe
+from app.settings import AppSettings
+from app.worker import RunnerWorker
+from core import __version__
+from core.collect import iter_target_folders
+from core.types import MergeConfig
+
+LOG_MAX_BLOCKS = 5000      # 日志区容量截断（3.11.7）
+LOG_TRIM_AMOUNT = 1000
+
+LEVEL_MAP = {"1 级子文件夹": 1, "2 级子文件夹": 2}
+ORIENTATION_MAP = {"自动": "auto", "纵向": "portrait", "横向": "landscape"}
+IMAGE_FIT_MAP = {"铺满 A4 页面": "page", "只缩小不放大": "origin"}
+ENGINE_MAP = {"自动": "auto", "仅 WPS": "wps", "仅纯 Python": "native"}
+
+
+class MainWindow(QMainWindow):
+    def __init__(self, settings: AppSettings | None = None) -> None:
+        super().__init__()
+        self.settings = settings or AppSettings()
+        self.setWindowTitle(f"A4 合并助手 v{__version__}")
+        self.resize(1080, 720)
+        self.worker: RunnerWorker | None = None
+        self._last_cfg: MergeConfig | None = None
+        self._last_log_file = current_log_file()
+
+        self._build_ui()
+        self._connect_signals()
+        self._sync_mode_ui()                 # 初始状态同步（build 时 setChecked 早于信号连接）
+        self._load_settings()
+        self._apply_template_validation()
+        self.settings.restore_window(self)
+
+    # ================================================================ UI 构建
+
+    def _build_ui(self) -> None:
+        central = QWidget()
+        splitter = QSplitter(Qt.Horizontal)
+
+        # ------------------------------------------------ 左侧：参数面板
+        left = QWidget()
+        lv = QVBoxLayout(left)
+        lv.setContentsMargins(6, 6, 6, 6)
+
+        # ---- 基本
+        gb_base = QGroupBox("基本设置")
+        f = QFormLayout(gb_base)
+        self.ed_root = QLineEdit(self)
+        self.ed_root.setPlaceholderText("请选择要合并的根目录…")
+        btn_root = QPushButton("浏览…")
+        row_root = QWidget()
+        rh = QHBoxLayout(row_root)
+        rh.setContentsMargins(0, 0, 0, 0)
+        rh.addWidget(self.ed_root, 1)
+        rh.addWidget(btn_root)
+        f.addRow("根目录", row_root)
+
+        self.lw_targets = QListWidget(self)
+        self.lw_targets.setSelectionMode(QListWidget.NoSelection)
+        self.lw_targets.setMaximumHeight(180)
+        trow = QWidget()
+        th = QVBoxLayout(trow)
+        th.setContentsMargins(0, 0, 0, 0)
+        th.addWidget(self.lw_targets)
+        hb = QHBoxLayout()
+        self.btn_all = QPushButton("全选")
+        self.btn_none = QPushButton("全不选")
+        self.lb_target_status = QLabel("")
+        hb.addWidget(self.btn_all)
+        hb.addWidget(self.btn_none)
+        hb.addStretch(1)
+        hb.addWidget(self.lb_target_status)
+        th.addLayout(hb)
+        f.addRow("目标文件夹", trow)
+
+        self.ra_mode_a = QRadioButton("生成到各子文件夹内（模式A）")
+        self.ra_mode_b = QRadioButton("统一输出到指定文件夹（模式B）")
+        self.ra_mode_a.setChecked(True)
+        mrow = QWidget()
+        mh = QVBoxLayout(mrow)
+        mh.setContentsMargins(0, 0, 0, 0)
+        mh.addWidget(self.ra_mode_a)
+        mh.addWidget(self.ra_mode_b)
+        f.addRow("输出位置", mrow)
+
+        self.ed_outdir = QLineEdit(self)
+        self.ed_outdir.setPlaceholderText("模式B 输出目录（不存在会自动创建）")
+        btn_outdir = QPushButton("浏览…")
+        orow = QWidget()
+        oh = QHBoxLayout(orow)
+        oh.setContentsMargins(0, 0, 0, 0)
+        oh.addWidget(self.ed_outdir, 1)
+        oh.addWidget(btn_outdir)
+        f.addRow("输出目录", orow)
+
+        self.cb_level = QComboBox()
+        self.cb_level.addItems(LEVEL_MAP.keys())
+        f.addRow("处理级别", self.cb_level)
+
+        self.ed_template = QLineEdit("【合并】{folder}.pdf")
+        f.addRow("文件名模板", self.ed_template)
+
+        self.cb_report = QCheckBox("生成 合并报告.txt")
+        self.cb_report.setChecked(True)
+        f.addRow("运行报告", self.cb_report)
+        lv.addWidget(gb_base)
+
+        # ---- 排版与转换
+        gb_conv = QGroupBox("排版与转换")
+        f2 = QFormLayout(gb_conv)
+        self.sp_margin = QDoubleSpinBox()
+        self.sp_margin.setRange(0, 100)
+        self.sp_margin.setDecimals(1)
+        self.sp_margin.setSuffix(" mm")
+        f2.addRow("四周留白", self.sp_margin)
+
+        self.cb_orientation = QComboBox()
+        self.cb_orientation.addItems(ORIENTATION_MAP.keys())
+        f2.addRow("A4 方向", self.cb_orientation)
+
+        self.cb_image_fit = QComboBox()
+        self.cb_image_fit.addItems(IMAGE_FIT_MAP.keys())
+        f2.addRow("图片适配", self.cb_image_fit)
+
+        self.cb_engine = QComboBox()
+        self.cb_engine.addItems(ENGINE_MAP.keys())
+        f2.addRow("转换引擎", self.cb_engine)
+
+        self.sp_timeout = QSpinBox()
+        self.sp_timeout.setRange(30, 3600)
+        self.sp_timeout.setSuffix(" 秒")
+        self.sp_timeout.setValue(600)
+        f2.addRow("WPS 超时", self.sp_timeout)
+
+        self.cb_lookalike = QCheckBox("把「与文件夹同名」的 PDF 也当作素材")
+        f2.addRow("同名成品", self.cb_lookalike)
+        lv.addWidget(gb_conv)
+
+        # ---- 加密
+        gb_enc = QGroupBox("加密文件")
+        f3 = QFormLayout(gb_enc)
+        self.pt_passwords = QPlainTextEdit()
+        self.pt_passwords.setPlaceholderText("每行一个密码（可用逗号分隔多个）\n默认不保存密码（3.11.9）")
+        self.pt_passwords.setMaximumHeight(80)
+        f3.addRow("打开密码", self.pt_passwords)
+        btn_pwfile = QPushButton("导入密码文件…")
+        f3.addRow("", btn_pwfile)
+        self.cb_no_prompt = QCheckBox("遇到加密文件直接跳过（不弹窗）")
+        f3.addRow("", self.cb_no_prompt)
+        lv.addWidget(gb_enc)
+        lv.addStretch(1)
+
+        # ------------------------------------------------ 右侧：执行面板
+        right = QWidget()
+        rv = QVBoxLayout(right)
+        rv.setContentsMargins(8, 8, 8, 8)
+
+        runrow = QHBoxLayout()
+        self.btn_start = QPushButton("开始合并")
+        self.btn_start.setMinimumHeight(40)
+        self.btn_start.setDefault(True)
+        self.btn_cancel = QPushButton("取消")
+        self.btn_cancel.setEnabled(False)
+        self.cb_dryrun = QCheckBox("仅预览（不生成）")
+        runrow.addWidget(self.btn_start, 1)
+        runrow.addWidget(self.btn_cancel)
+        runrow.addWidget(self.cb_dryrun)
+        rv.addLayout(runrow)
+
+        self.pb_folder = QProgressBar()
+        self.pb_page = QProgressBar()
+        rv.addWidget(QLabel("文件夹进度"))
+        rv.addWidget(self.pb_folder)
+        rv.addWidget(QLabel("页面进度"))
+        rv.addWidget(self.pb_page)
+
+        self.txt_log = QPlainTextEdit()
+        self.txt_log.setReadOnly(True)
+        self.txt_log.setMaximumBlockCount(LOG_MAX_BLOCKS + LOG_TRIM_AMOUNT * 2)
+        self.txt_log.setStyleSheet("QPlainTextEdit{font-family:Consolas,'Microsoft YaHei';font-size:9pt;}")
+        rv.addWidget(self.txt_log, 1)
+
+        splitter.addWidget(left)
+        splitter.addWidget(right)
+        splitter.setStretchFactor(0, 2)
+        splitter.setStretchFactor(1, 3)
+        lay = QHBoxLayout(central)
+        lay.addWidget(splitter)
+        self.setCentralWidget(central)
+
+        # 菜单
+        mb = self.menuBar()
+        m_file = mb.addMenu("文件")
+        m_file.addAction("导出诊断包…", self._export_diagnostics)
+        m_file.addSeparator()
+        m_file.addAction("退出", self.close)
+        m_help = mb.addMenu("帮助")
+        m_help.addAction("关于", self._show_about)
+
+        # 状态栏
+        self.statusBar().showMessage("引擎探测中…")
+        self._btn_root = btn_root
+        self._btn_outdir = btn_outdir
+        self._btn_pwfile = btn_pwfile
+
+    def _connect_signals(self) -> None:
+        self._btn_root.clicked.connect(self._pick_root)
+        self._btn_outdir.clicked.connect(self._pick_outdir)
+        self._btn_pwfile.clicked.connect(self._pick_pwfile)
+        self.ed_root.textChanged.connect(self._refresh_targets)
+        self.cb_level.currentIndexChanged.connect(self._refresh_targets)
+        self.ra_mode_a.toggled.connect(self._sync_mode_ui)
+        self.ra_mode_b.toggled.connect(self._sync_mode_ui)
+        self.ed_template.textChanged.connect(self._apply_template_validation)
+        self.ed_outdir.textChanged.connect(self._refresh_targets)
+        self.btn_all.clicked.connect(lambda: self._set_targets_checked(True))
+        self.btn_none.clicked.connect(lambda: self._set_targets_checked(False))
+        self.btn_start.clicked.connect(self._start)
+        self.btn_cancel.clicked.connect(self._cancel)
+        self.lw_targets.itemChanged.connect(self._update_target_status)
+
+    # ================================================================ 设置记忆
+
+    def _load_settings(self) -> None:
+        s = self.settings
+        self.ed_root.setText(s.get_str("root"))
+        self.ra_mode_b.setChecked(s.get_str("output_mode") == "B")
+        self.ra_mode_a.setChecked(s.get_str("output_mode") != "B")
+        self.ed_outdir.setText(s.get_str("output_dir"))
+        self.cb_level.setCurrentIndex(0 if s.get_int("level", 1) == 1 else 1)
+        self.ed_template.setText(s.get_str("output_name", "【合并】{folder}.pdf"))
+        self.cb_report.setChecked(s.get_bool("report", True))
+        self.sp_margin.setValue(float(s.get_str("margin_mm", "0.0") or "0.0"))
+        orient = s.get_str("orientation", "auto")
+        self.cb_orientation.setCurrentIndex(
+            list(ORIENTATION_MAP.values()).index(orient) if orient in ORIENTATION_MAP.values() else 0)
+        fit = s.get_str("image_fit", "page")
+        self.cb_image_fit.setCurrentIndex(
+            list(IMAGE_FIT_MAP.values()).index(fit) if fit in IMAGE_FIT_MAP.values() else 0)
+        eng = s.get_str("engine", "auto")
+        self.cb_engine.setCurrentIndex(
+            list(ENGINE_MAP.values()).index(eng) if eng in ENGINE_MAP.values() else 0)
+        self.sp_timeout.setValue(s.get_int("wps_timeout", 600))
+        self.cb_lookalike.setChecked(s.get_bool("include_lookalikes", False))
+        self.cb_no_prompt.setChecked(s.get_bool("no_prompt", False))
+        self.cb_dryrun.setChecked(s.get_bool("dry_run", False))
+        pws = s.get_str_list("passwords")
+        if pws:
+            self.pt_passwords.setPlainText("\n".join(pws))
+
+    def _save_settings(self) -> None:
+        s = self.settings
+        s.set("root", self.ed_root.text())
+        s.set("output_mode", "B" if self.ra_mode_b.isChecked() else "A")
+        s.set("output_dir", self.ed_outdir.text())
+        s.set("level", LEVEL_MAP[self.cb_level.currentText()])
+        s.set("output_name", self.ed_template.text())
+        s.set("report", self.cb_report.isChecked())
+        s.set("margin_mm", self.sp_margin.value())
+        s.set("orientation", ORIENTATION_MAP[self.cb_orientation.currentText()])
+        s.set("image_fit", IMAGE_FIT_MAP[self.cb_image_fit.currentText()])
+        s.set("engine", ENGINE_MAP[self.cb_engine.currentText()])
+        s.set("wps_timeout", self.sp_timeout.value())
+        s.set("include_lookalikes", self.cb_lookalike.isChecked())
+        s.set("no_prompt", self.cb_no_prompt.isChecked())
+        s.set("dry_run", self.cb_dryrun.isChecked())
+        checked = [self.lw_targets.item(i).text()
+                   for i in range(self.lw_targets.count())
+                   if self.lw_targets.item(i).checkState() == Qt.Checked]
+        s.set_str_list("checked_targets", checked)
+        pws = [x.strip() for x in self.pt_passwords.toPlainText().replace("，", ",").splitlines() if x.strip()]
+        if pws:
+            s.set_str_list("passwords", pws)     # M3 起改为 DPAPI；当前先记忆（本地明文并提示）
+
+    def closeEvent(self, ev) -> None:            # noqa: N802
+        self._save_settings()
+        self.settings.save_window(self)
+        super().closeEvent(ev)
+
+    # ================================================================ 交互
+
+    def _pick_root(self) -> None:
+        d = QFileDialog.getExistingDirectory(self, "选择根目录", self.ed_root.text())
+        if d:
+            self.ed_root.setText(d)
+
+    def _pick_outdir(self) -> None:
+        d = QFileDialog.getExistingDirectory(self, "选择统一输出目录", self.ed_outdir.text())
+        if d:
+            self.ed_outdir.setText(d)
+
+    def _pick_pwfile(self) -> None:
+        f, _ = QFileDialog.getOpenFileName(self, "选择密码文件", "", "文本文件 (*.txt)")
+        if f:
+            try:
+                lines = Path(f).read_text(encoding="utf-8-sig", errors="replace").splitlines()
+            except Exception as exc:
+                QMessageBox.warning(self, "导入失败", str(exc))
+                return
+            words = []
+            for ln in lines:
+                ln = ln.strip()
+                if ln and not ln.startswith("#"):
+                    words.extend(x.strip() for x in ln.split(",") if x.strip())
+            cur = [x.strip() for x in self.pt_passwords.toPlainText().splitlines() if x.strip()]
+            self.pt_passwords.setPlainText("\n".join(dict.fromkeys(cur + words)))
+
+    def _sync_mode_ui(self) -> None:
+        """模式B 时启用输出目录输入。"""
+        is_b = self.ra_mode_b.isChecked()
+        self.ed_outdir.setEnabled(is_b)
+        self._btn_outdir.setEnabled(is_b)
+
+    def _refresh_targets(self) -> None:
+        """按根目录+级别刷新目标文件夹候选（保留勾选记忆，排除模式B输出目录）。"""
+        root = Path(self.ed_root.text().strip())
+        if not root.is_dir():
+            self.lw_targets.clear()
+            self.lb_target_status.setText("请先选择有效的根目录")
+            return
+        out_dir = Path(self.ed_outdir.text().strip()) if self.ra_mode_b.isChecked() else None
+        exclude = {out_dir.resolve()} if out_dir else set()
+        try:
+            targets = list(iter_target_folders(root, LEVEL_MAP[self.cb_level.currentText()],
+                                               exclude))
+        except OSError:
+            targets = []
+        remembered = set(self.settings.get_str_list("checked_targets"))
+        was_empty = self.lw_targets.count() == 0
+        self.lw_targets.blockSignals(True)
+        self.lw_targets.clear()
+        for t in targets:
+            rel = str(t.relative_to(root)).replace("\\", "/")
+            item = QListWidgetItem(rel)
+            item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
+            if remembered or was_empty:
+                item.setCheckState(Qt.Checked)
+            else:
+                item.setCheckState(Qt.Checked)     # 全部默认勾选
+            self.lw_targets.addItem(item)
+        self.lw_targets.blockSignals(False)
+        self._update_target_status()
+
+    def _set_targets_checked(self, on: bool) -> None:
+        for i in range(self.lw_targets.count()):
+            self.lw_targets.item(i).setCheckState(Qt.Checked if on else Qt.Unchecked)
+
+    def _update_target_status(self) -> None:
+        total = self.lw_targets.count()
+        checked = sum(1 for i in range(total)
+                      if self.lw_targets.item(i).checkState() == Qt.Checked)
+        self.lb_target_status.setText(f"已选 {checked}/{total}")
+
+    def _apply_template_validation(self) -> None:
+        """模板实时校验（3.11.6）：非法字符/未知占位符 → 红框 + 禁用开始。"""
+        text = self.ed_template.text()
+        errs = MergeConfig(root=Path("."), output_name=text).validate()
+        if errs and text:
+            self.ed_template.setStyleSheet(
+                "QLineEdit{border:1px solid #c0392b;background:#fdecea;}")
+            self.ed_template.setToolTip("\n".join(errs))
+        else:
+            self.ed_template.setStyleSheet("")
+            self.ed_template.setToolTip("")
+        self.btn_start.setEnabled(not bool(errs))
+
+    # ================================================================ 执行
+
+    def _build_config(self) -> MergeConfig | None:
+        root_txt = self.ed_root.text().strip()
+        root = Path(root_txt) if root_txt else None
+        if root is None or not root.is_dir():
+            QMessageBox.warning(self, "提示", "请先选择有效的根目录。")
+            return None
+        checked = [self.lw_targets.item(i).text()
+                   for i in range(self.lw_targets.count())
+                   if self.lw_targets.item(i).checkState() == Qt.Checked]
+        if not checked:
+            QMessageBox.warning(self, "提示", "请至少勾选一个目标文件夹。")
+            return None
+        out_dir = None
+        if self.ra_mode_b.isChecked():
+            t = self.ed_outdir.text().strip()
+            if not t:
+                QMessageBox.warning(self, "提示", "模式B 需要填写统一输出目录。")
+                return None
+            out_dir = Path(t)
+        pws = []
+        for ln in self.pt_passwords.toPlainText().replace("，", ",").splitlines():
+            pws.extend(x.strip() for x in ln.split(",") if x.strip())
+        cfg = MergeConfig(
+            root=root,
+            level=LEVEL_MAP[self.cb_level.currentText()],
+            output_name=self.ed_template.text(),
+            output_dir=out_dir,
+            only=checked,
+            margin_mm=self.sp_margin.value(),
+            orientation=ORIENTATION_MAP[self.cb_orientation.currentText()],
+            image_fit=IMAGE_FIT_MAP[self.cb_image_fit.currentText()],
+            engine=ENGINE_MAP[self.cb_engine.currentText()],
+            wps_timeout=self.sp_timeout.value(),
+            include_lookalikes=self.cb_lookalike.isChecked(),
+            passwords=pws,
+            prompt=not self.cb_no_prompt.isChecked(),
+            report=self.cb_report.isChecked(),
+            dry_run=self.cb_dryrun.isChecked(),
+        )
+        errs = cfg.validate()
+        if errs:
+            QMessageBox.warning(self, "配置错误", "\n".join(errs))
+            return None
+        return cfg
+
+    def _start(self) -> None:
+        if self.worker is not None and self.worker.isRunning():
+            return
+        cfg = self._build_config()
+        if cfg is None:
+            return
+        self._last_cfg = cfg
+        self._set_running(True)
+        self.txt_log.clear()
+        self.pb_folder.setRange(0, 0)
+        self.pb_page.setRange(0, 0)
+        self._append_log("info", f"开始处理：{cfg.root}（{'预览' if cfg.dry_run else '合并'}模式）")
+
+        self.worker = RunnerWorker(cfg, self)
+        self.worker.log_signal.connect(self._append_log)
+        self.worker.progress_signal.connect(self._on_progress)
+        self.worker.finished_signal.connect(self._on_finished)
+        self.worker.start()
+
+    def _cancel(self) -> None:
+        if self.worker is not None:
+            self._append_log("warn", "正在取消…（将终止正在运行的转换进程）")
+            self.worker.cancel()
+            self.btn_cancel.setEnabled(False)
+
+    def _set_running(self, running: bool) -> None:
+        self.btn_start.setEnabled(not running and not bool(
+            MergeConfig(root=Path("."), output_name=self.ed_template.text()).validate()))
+        self.btn_cancel.setEnabled(running)
+
+    def _on_progress(self, kind: str, done: int, total: int, text: str) -> None:
+        if kind == "folder":
+            self.pb_folder.setRange(0, max(total, 1))
+            self.pb_folder.setValue(done + 1)
+            self.pb_folder.setFormat(f"文件夹 {done + 1}/{total}：{text}")
+        elif kind == "page":
+            self.pb_page.setRange(0, 0)
+            self.pb_page.setFormat(text)
+
+    def _on_finished(self, summary) -> None:
+        self._set_running(False)
+        self.pb_folder.setRange(0, 1)
+        self.pb_folder.setValue(1)
+        self.pb_page.setRange(0, 1)
+        self.pb_page.setValue(1)
+        if summary is None:
+            self._append_log("error", "处理异常结束（详见日志）。")
+            return
+        ok = sum(1 for r in summary.results if r.done)
+        total = len(summary.results)
+        self._append_log("info", f"处理完成：成功 {ok}/{total} 个目标，"
+                                 f"耗时 {summary.elapsed:.1f} 秒。"
+                                 + (f"报告：{summary.report_path}" if summary.report_path else ""))
+        if summary.results:
+            fails = [(r.label, f) for r in summary.results for f in r.failures]
+            if fails:
+                self._append_log("warn", f"未能合并的文件 {len(fails)} 个，详见上方红色日志。")
+            QMessageBox.information(
+                self, "完成",
+                f"处理完成：成功 {ok}/{total} 个目标。\n\n"
+                + (f"失败文件 {len(fails)} 个，详见日志。\n" if fails else "全部成功。\n")
+                + ("\n（详细失败清单对话框在 M4 完善）"))
+        else:
+            QMessageBox.information(self, "完成", "没有需要处理的目标文件夹。")
+        self.worker = None
+
+    # ================================================================ 日志
+
+    def _append_log(self, level: str, msg: str) -> None:
+        color = {"info": "#333333", "ok": "#1e7d32", "warn": "#b26a00",
+                 "error": "#c62828"}.get(level, "#333333")
+        import html as _html
+        self.txt_log.appendHtml(
+            f'<span style="color:{color};">{_html.escape(msg)}</span>')
+        from app.diagnostics import log_debug
+        log_debug(level, msg)                    # 同时写 debug 日志文件
+        sb = self.txt_log.verticalScrollBar()
+        sb.setValue(sb.maximum())                # 自动滚动到底
+        if self.txt_log.blockCount() > LOG_MAX_BLOCKS + LOG_TRIM_AMOUNT:
+            self.txt_log.blockCountChanged.emit  # no-op 占位
+            self._trim_log()
+
+    def _trim_log(self) -> None:
+        """容量截断：超过上限删除开头一段（保留最新）。"""
+        doc = self.txt_log.document()
+        while doc.blockCount() > LOG_MAX_BLOCKS:
+            doc.setPlainText(doc.toPlainText()[len(doc.findBlockByNumber(0).text()) + 1:])
+
+    # ================================================================ 其它
+
+    def _export_diagnostics(self) -> None:
+        f, _ = QFileDialog.getSaveFileName(self, "导出诊断包", "A4合并助手_诊断包.zip",
+                                           "ZIP 文件 (*.zip)")
+        if not f:
+            return
+        try:
+            build_diagnostic_zip(Path(f), cfg=self._last_cfg, log_file=self._last_log_file)
+            QMessageBox.information(self, "导出成功", f"诊断包已保存：\n{f}")
+        except Exception as exc:
+            QMessageBox.warning(self, "导出失败", str(exc))
+
+    def _show_about(self) -> None:
+        from PySide6.QtCore import __version__ as qt_ver
+        QMessageBox.about(self, "关于 A4 合并助手",
+                          f"<b>A4 合并助手</b> v{__version__}<br>"
+                          "把每位股东/客户文件夹里的 PDF、图片、Word、Excel、PPT、文本"
+                          "按顺序合并成统一的 A4 PDF。"
+                          "<br><br>更新方式：整包替换 exe（无自动更新）。"
+                          f"<br>Qt {qt_ver} / Python 运行时内置于 exe。")
+
+    def showEvent(self, ev) -> None:             # noqa: N802
+        super().showEvent(ev)
+        QTimer.singleShot(50, self._probe_engines)
+
+    def _probe_engines(self) -> None:
+        try:
+            info = engine_probe()
+            wps = "WPS 可用" if info.get("wps") else "WPS 不可用"
+            native = "纯 Python 可用" if info.get("native") else "纯 Python 不可用"
+            self.statusBar().showMessage(
+                f"引擎：{wps} / {native}    版本 v{__version__}")
+        except Exception:
+            self.statusBar().showMessage(f"A4 合并助手 v{__version__}")

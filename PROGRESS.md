@@ -11,7 +11,8 @@
 |---|---|---|
 | M0 环境准备 | ✅ 完成（tag: m0） | 2026-02 基线建成 |
 | M1 核心重构 | ✅ 完成（tag: m1） | 2026-10 pytest 28/28 全绿 |
-| M2 GUI 骨架 | ⬜ 未开始 | 下一个 |
+| M2 GUI 骨架 | ✅ 完成（tag: m2） | 2026-10 pytest 37/37 全绿 |
+| M3 后台执行 | ⬜ 未开始 | 下一个 |
 | M3 后台执行 | ⬜ 未开始 | |
 | M4 结果体验 | ⬜ 未开始 | |
 | M5 打包交付 | ⬜ 未开始 | |
@@ -53,6 +54,25 @@
   报告防误扫、lookalike 两级场景、--only 歧义、模板校验、GBK 解码、自然排序、WPS 全链路集成（本机实转）。
 - **M1 验收对照结果**：新 cli 与 legacy 对同一 pure_pdf 输入产出**内容级一致**（页数/每页尺寸/内容流 hash 全同）。
 - mixed 全链路实测：WPS 真实转换 docx/xlsx/pptx/jpg/GBK txt 成功，3 目标 3 成品 + 报告。
+
+## M2 成果（GUI 骨架，2026-10）
+
+- **app 包**：main.py（单实例 QSharedMemory + QLocalServer 激活已有窗口 + --smoke 冒烟模式）、
+  ui_main.py（参数表单：根目录/目标勾选/输出双模式联动/模板实时校验红框/引擎下拉/密码列表/
+  日志区着色+容量截断+自动滚动/两级进度条/菜单：诊断导出·关于）、settings.py（QSettings 记忆，
+  类型韧性读取 get_bool/get_int）、worker.py（QThread 桥接 core.runner 信号，M3 完善取消/密码弹窗）、
+  diagnostics.py（debug 日志落盘 %LOCALAPPDATA%\\A4合并助手\\logs、excepthook 可开关弹框、诊断包 zip：
+  日志+配置[密码脱敏]+引擎探测+系统信息）。
+- **测试**：test_gui_smoke（控件/模板校验/模式联动/目标刷新/诊断包/日志落盘）、
+  test_app_smoke（进程级 GUI 冒烟 --smoke、单实例锁第二实例快速退出）。
+- **踩坑记录**：① QSettings 注册表 bool 漂移成 str → get_bool 韧性读取；② 无头环境 excepthook
+  弹模态框卡死 → install_excepthook(dialog=False) 用于 smoke；③ 测试弹 QMessageBox 会挂 → monkeypatch。
+- GUI 真机显示效果留给 M6 灰度确认（offscreen 冒烟已验证逻辑）。
+
+## M3 计划（下一里程碑）
+
+Worker 完善：取消时终止 WPS 子进程（core 已支持 cancel 回调）、密码弹窗（ask_password 信号 →
+模态输入框，3 次重试，回车跳过）、密码记住走 DPAPI（ctypes CryptProtectData，3.11.9）。
 
 ## 遗留问题 / 注意点
 

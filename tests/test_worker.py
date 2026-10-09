@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 import shutil
+import time
 from pathlib import Path
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
@@ -37,13 +38,19 @@ def test_worker_cancel_quick(qapp, tmp_path):
     worker.finished_signal.connect(lambda s: (result.update(summary=s), loop.quit()))
     worker.start()
     QTimer.singleShot(150, worker.cancel)          # 立即取消
-    QTimer.singleShot(20000, loop.quit)            # 兜底
-    t0 = __import__("time").time()
-    loop.exec()
-    elapsed = __import__("time").time() - t0
+    t0 = time.time()
+    # 等 worker 真正结束（最多 20 秒）并把队列里的信号处理干净：
+    # isFinished() 变 True 时 finished_signal 可能还没被主线程事件循环取走。
+    while not worker.isFinished() and time.time() - t0 < 20:
+        loop.processEvents()
+        time.sleep(0.05)
+    assert worker.isFinished(), "取消后未结束（>20s）"
+    while result["summary"] == "pending" and time.time() - t0 < 25:
+        loop.processEvents()
+        time.sleep(0.05)
+    elapsed = time.time() - t0
     assert elapsed < 10, f"取消后未快速结束：{elapsed:.1f}s"
     assert result["summary"] != "pending"          # 已完成（正常或异常都算结束）
-    assert worker.isFinished()
 
 
 def test_worker_password_flow(qapp, tmp_path):
@@ -51,7 +58,7 @@ def test_worker_password_flow(qapp, tmp_path):
     （verify 正确性由 golden 测试覆盖；本测试关注回调流程与最终结果。）"""
 
     def _run_once():
-        root = tmp_path / "enc"
+        root = tmp_path / "enc_flow"
         shutil.copytree(SAMPLES / "encrypted", root)
         cfg = MergeConfig(root=root, output_name="{folder}.pdf", report=False,
                           passwords=[], prompt=True)

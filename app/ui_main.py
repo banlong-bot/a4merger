@@ -1,8 +1,9 @@
-"""app/ui_main.py —— 主窗口（M2 GUI 骨架）。
+"""app/ui_main.py —— 主窗口（M2 骨架 + M3 后台执行 + M4 结果体验）。
 
 包含：参数表单（根目录/目标勾选/输出模式/模板实时校验/引擎/密码）、
-日志区（着色 + 容量截断 + 自动滚动）、两级进度条、状态栏（引擎探测 + 版本）、
-诊断导出与关于对话框。
+日志区（着色 + 容量截断 + 自动滚动）、两级进度条、
+状态栏（引擎探测 + 任务状态 + 版本）、诊断导出与关于对话框、
+完成总结对话框（M4：成功/失败清单、双击定位、导出 TXT、打开输出目录/报告）。
 """
 from __future__ import annotations
 
@@ -18,6 +19,7 @@ from PySide6.QtWidgets import (QCheckBox, QComboBox, QDoubleSpinBox, QFileDialog
                                QSpinBox, QSplitter, QVBoxLayout, QWidget)
 
 from app.diagnostics import build_diagnostic_zip, current_log_file, engine_probe
+from app.results_dialog import ResultDialog
 from app.settings import AppSettings
 from app.worker import RunnerWorker
 from core import __version__
@@ -42,6 +44,9 @@ class MainWindow(QMainWindow):
         self.worker: RunnerWorker | None = None
         self._last_cfg: MergeConfig | None = None
         self._last_log_file = current_log_file()
+        self._last_summary = None
+        self._result_dialog: ResultDialog | None = None
+        self.smoke = False                       # 冒烟/测试模式：结果对话框不阻塞
 
         self._build_ui()
         self._connect_signals()
@@ -218,8 +223,14 @@ class MainWindow(QMainWindow):
         m_help = mb.addMenu("帮助")
         m_help.addAction("关于", self._show_about)
 
-        # 状态栏
-        self.statusBar().showMessage("引擎探测中…")
+        # 状态栏：引擎探测 + 任务状态 + 版本号（计划 2.2 / 3.11.10）
+        self.lb_engine = QLabel("引擎：探测中…")
+        self.lb_state = QLabel("就绪")
+        self.lb_version = QLabel(f"v{__version__}")
+        sb = self.statusBar()
+        sb.addWidget(self.lb_engine)
+        sb.addWidget(self.lb_state, 1)          # 任务状态占满中间
+        sb.addPermanentWidget(self.lb_version)
         self._btn_root = btn_root
         self._btn_outdir = btn_outdir
         self._btn_pwfile = btn_pwfile
@@ -449,6 +460,7 @@ class MainWindow(QMainWindow):
             return
         self._last_cfg = cfg
         self._set_running(True)
+        self._set_state("正在运行…", "busy")
         self.txt_log.clear()
         self.pb_folder.setRange(0, 0)
         self.pb_page.setRange(0, 0)
@@ -491,8 +503,17 @@ class MainWindow(QMainWindow):
     def _cancel(self) -> None:
         if self.worker is not None:
             self._append_log("warn", "正在取消…（将终止正在运行的转换进程）")
+            self._set_state("正在取消…", "warn")
             self.worker.cancel()
             self.btn_cancel.setEnabled(False)
+
+    def _set_state(self, text: str, kind: str = "idle") -> None:
+        """状态栏「当前任务状态」（计划 2.2：引擎探测 / 任务状态 / 版本号）。"""
+        color = {"idle": "#333333", "busy": "#1565c0",
+                 "ok": "#1e7d32", "warn": "#b26a00", "error": "#c62828"}.get(kind, "#333333")
+        self.lb_state.setText(text)
+        self.lb_state.setToolTip(text)
+        self.lb_state.setStyleSheet(f"color:{color};")
 
     def _set_running(self, running: bool) -> None:
         self.btn_start.setEnabled(not running and not bool(
@@ -509,6 +530,7 @@ class MainWindow(QMainWindow):
             self.pb_page.setFormat(text)
 
     def _on_finished(self, summary) -> None:
+        """运行结束：状态栏收尾 + 日志汇总 + 弹出完成总结对话框（M4）。"""
         self._set_running(False)
         self.pb_folder.setRange(0, 1)
         self.pb_folder.setValue(1)
@@ -516,24 +538,41 @@ class MainWindow(QMainWindow):
         self.pb_page.setValue(1)
         if summary is None:
             self._append_log("error", "处理异常结束（详见日志）。")
+            self._set_state("运行异常结束，详见日志", "error")
+            QMessageBox.warning(self, "运行失败",
+                                "处理过程中发生异常，已结束本次任务。\n详见日志区与诊断包。")
+            self.worker = None
             return
+
+        self._last_summary = summary
+        self._save_settings()                    # 运行后同步勾选/参数记忆
         ok = sum(1 for r in summary.results if r.done)
         total = len(summary.results)
-        self._append_log("info", f"处理完成：成功 {ok}/{total} 个目标，"
-                                 f"耗时 {summary.elapsed:.1f} 秒。"
-                                 + (f"报告：{summary.report_path}" if summary.report_path else ""))
-        if summary.results:
-            fails = [(r.label, f) for r in summary.results for f in r.failures]
-            if fails:
-                self._append_log("warn", f"未能合并的文件 {len(fails)} 个，详见上方红色日志。")
-            QMessageBox.information(
-                self, "完成",
-                f"处理完成：成功 {ok}/{total} 个目标。\n\n"
-                + (f"失败文件 {len(fails)} 个，详见日志。\n" if fails else "全部成功。\n")
-                + ("\n（详细失败清单对话框在 M4 完善）"))
-        else:
-            QMessageBox.information(self, "完成", "没有需要处理的目标文件夹。")
+        pages = sum(r.pages for r in summary.results)
+        fails = [(r.label, f) for r in summary.results for f in r.failures]
+        skipped = sum(len(r.lookalikes) for r in summary.results)
+        prefix = "预览完成" if summary.config.dry_run else "处理完成"
+        self._append_log(
+            "info",
+            f"{prefix}：成功 {ok}/{total} 个目标，共 {pages} 页，"
+            f"失败 {len(fails)} 个文件，跳过成品 {skipped} 个，"
+            f"耗时 {summary.elapsed:.1f} 秒。"
+            + (f"报告：{summary.report_path}" if summary.report_path else ""))
+        tone = "error" if fails else ("warn" if skipped or not ok else "ok")
+        self._set_state(
+            f"{prefix}：成功 {ok}/{total} 个目标，共 {pages} 页"
+            + (f"，失败 {len(fails)} 个" if fails else ""), tone)
+        self._show_result_dialog(summary)
         self.worker = None
+
+    def _show_result_dialog(self, summary) -> None:
+        """弹出完成总结对话框（M4）；冒烟测试下不显示、不阻塞。"""
+        dlg = ResultDialog(summary, cfg=self._last_cfg or summary.config, parent=self)
+        self._result_dialog = dlg                    # 保持引用，防被回收
+        dlg.finished.connect(lambda _r: setattr(self, "_result_dialog", None))
+        if getattr(self, "smoke", False):
+            return
+        dlg.exec()
 
     # ================================================================ 日志
 
@@ -588,7 +627,7 @@ class MainWindow(QMainWindow):
             info = engine_probe()
             wps = "WPS 可用" if info.get("wps") else "WPS 不可用"
             native = "纯 Python 可用" if info.get("native") else "纯 Python 不可用"
-            self.statusBar().showMessage(
-                f"引擎：{wps} / {native}    版本 v{__version__}")
+            self.lb_engine.setText(f"引擎：{wps} / {native}")
         except Exception:
-            self.statusBar().showMessage(f"A4 合并助手 v{__version__}")
+            self.lb_engine.setText("引擎：探测失败")
+        self.lb_version.setText(f"v{__version__}")

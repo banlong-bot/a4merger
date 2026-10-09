@@ -6,6 +6,7 @@ __pycache__/
 # 构建产物（PyInstaller）
 dist/
 pyi_build/
+build/shots/
 
 # 日志与诊断
 *.log

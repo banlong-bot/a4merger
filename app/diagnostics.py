@@ -53,11 +53,42 @@ def dependency_versions() -> dict[str, str]:
     return info
 
 
-def data_dir() -> Path:
+def _candidate_data_dirs() -> list[Path]:
+    """数据目录候选（按优先级）：%LOCALAPPDATA% → %TEMP% → 用户主目录。
+
+    受限环境（企业策略/沙箱/只读配置文件）下写不了 %LOCALAPPDATA%，
+    逐级退让，绝不因为"日志写不进去"就让应用启动失败（排障 2026-10）。
+    """
+    out: list[Path] = []
     base = os.environ.get("LOCALAPPDATA")
-    d = Path(base) / "A4合并助手" if base else Path.home() / ".a4merger"
-    d.mkdir(parents=True, exist_ok=True)
-    return d
+    if base:
+        out.append(Path(base) / "A4合并助手")
+    tmp = os.environ.get("TEMP") or os.environ.get("TMP")
+    if tmp:
+        out.append(Path(tmp) / "A4合并助手")
+    out.append(Path.home() / ".a4merger")
+    return out
+
+
+def _try_dir(path: Path) -> Path | None:
+    """建目录并实测可写；不可用返回 None。"""
+    try:
+        path.mkdir(parents=True, exist_ok=True)
+        probe = path / f".a4写入探测_{os.getpid()}"
+        probe.write_text("1", encoding="utf-8")
+        probe.unlink()
+        return path
+    except Exception:
+        return None
+
+
+def data_dir() -> Path:
+    """应用数据目录（日志/诊断），自动选择第一个可写位置。"""
+    for cand in _candidate_data_dirs():
+        got = _try_dir(cand)
+        if got is not None:
+            return got
+    return _candidate_data_dirs()[-1]          # 全都不可写：返回默认路径（后续操作会报错）
 
 
 def log_dir() -> Path:
@@ -73,15 +104,23 @@ def current_log_file() -> Path:
 
 
 def setup_file_logging(log_path: Path) -> logging.Logger:
-    """把名为 a4merger 的 logger 同时写到日志文件（UTF-8）与 stderr（开发期）。"""
+    """把名为 a4merger 的 logger 同时写到日志文件（UTF-8）与 stderr（开发期）。
+
+    日志文件打不开（权限/只读环境）时**不能让应用起不来**：退到控制台日志继续跑，
+    并在 stderr 留一行中文说明。
+    """
     logger = logging.getLogger(_LOGGER_NAME)
     logger.setLevel(logging.DEBUG)
     logger.propagate = False
     if logger.handlers:
         return logger
-    fh = logging.FileHandler(log_path, encoding="utf-8")
-    fh.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
-    logger.addHandler(fh)
+    try:
+        fh = logging.FileHandler(log_path, encoding="utf-8")
+        fh.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))
+        logger.addHandler(fh)
+    except Exception as exc:
+        print(f"[提示] 无法写入日志文件（{type(exc).__name__}: {exc}），"
+              f"本次仅输出到窗口日志区：{log_path}", file=sys.stderr, flush=True)
     try:
         sh = logging.StreamHandler()
         sh.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(message)s"))

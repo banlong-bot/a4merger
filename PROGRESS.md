@@ -162,6 +162,16 @@ Worker 完善：取消时终止 WPS 子进程（core 已支持 cancel 回调）�
 6. 结果对话框与主界面真机显示效果仍待 M6 灰度确认（offscreen 下已核对控件与文本）。
 7. 计划 3.4 建议用 Python 3.11 打包；实际采用与 requirements 锁定的 **3.12.10**（PyInstaller 6.22.3
    官方支持 3.8~3.14，本机打包与 frozen 验收全绿）。如需严格对齐计划，可另建 3.11 环境重打包验证。
+8. **"Could not create temporary directory" 排障结论（2026-10，已加固）**：
+   onefile 版启动要把内置文件解包到 `%TEMP%\_MEIxxxxxx`；`%TEMP%` 不可写时引导器只甩这句英文。
+   - 本机复现条件：exe 放在**DSH 会话工作区**内、又用**会话场景启动**（受限令牌）→ 写 `%TEMP%` 被拦；
+     同一 exe **鼠标双击**（资源管理器/ShellExecute，普通用户令牌）或放到工作区外（如桌面、D:\）
+     均正常（已逐项实测：5 次双击启动全部 4~5 秒干净退出）。
+   - 已做加固：`build/rthook_tempdir.py` 运行时钩子（在 import 主程序前探测 TMP/TEMP 可写性，
+     不可写则退让到 `%LOCALAPPDATA%\A4合并助手\临时目录` → 用户主目录，并写回 TMP/TEMP）；
+     `app/diagnostics.setup_file_logging` 写不了日志文件时降级为仅窗口日志，**不再让应用起不来**；
+     `data_dir()` 逐级退让（%LOCALAPPDATA% → %TEMP% → 用户主目录）。
+   - 给同事的分发建议：exe 放浅目录（如 `D:\A4合并助手\`）再双击；不要放在受限/同步目录里运行。
 
 ## 下一步
 

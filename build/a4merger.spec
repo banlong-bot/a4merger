@@ -40,13 +40,14 @@ try:
             (str(REPO / "fonts" / "NotoSansCJKsc-Regular.otf"), "fonts"),
         ],
         hiddenimports=[
-            "pypdf", "pypdf._crt", "PIL", "PIL.Image", "PIL.ImageFile",
+            # pypdf 6.19 无 pypdf._crt（旧版才有），不要写不存在的东西（会报 ERROR 噪音）
+            "pypdf", "PIL", "PIL.Image", "PIL.ImageFile",
             "fpdf", "fpdf.svg", "msoffcrypto", "msoffcrypto.format",
             "msoffcrypto.format.ooxml", "msoffcrypto.format.doc97",
         ],
         hookspath=[],
         hooksconfig={},
-        runtime_hooks=[],
+        runtime_hooks=[str(SPEC_DIR / "rthook_tempdir.py")],   # 临时目录自愈（见该文件说明）
         excludes=[
             # 注意：不要排除 unittest —— fpdf2 的 fpdf/sign.py 会 import unittest，
             # 一旦排除会导致「纯 Python 引擎不可用」（文本/图片兜底全部失效）。

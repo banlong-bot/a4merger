@@ -80,13 +80,18 @@ def test_worker_password_flow(qapp, tmp_path):
         worker.start()
         QTimer.singleShot(30000, loop.quit)
         loop.exec()
+        # 兜底：finished_signal 可能晚于 30 秒兜底定时器才被事件循环取走
+        deadline = time.time() + 15
+        while result["summary"] is None and time.time() < deadline:
+            loop.processEvents()
+            time.sleep(0.05)
         return worker, result, requested
 
     worker, result, requested = _run_once()
     assert worker.isFinished()
     assert requested == ["加密报告.pdf"]            # 密码请求只针对加密文件
     s = result["summary"]
-    assert s is not None
+    assert s is not None, f"worker 未产出结果（密码请求 = {requested}）"
     done = [r for r in s.results if r.done]
     assert done and done[0].pages == 3            # 加密报告 2 页 + 普通材料 1 页
 

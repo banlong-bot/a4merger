@@ -198,6 +198,7 @@ def _process_folder(folder: Path, out_path: Path, cfg: MergeConfig, tmp_root: Pa
             if backend == "none":
                 reason = ("需要 WPS" if kind in ("word", "excel", "ppt")
                           else "没有可用的转换引擎")
+                blocked.add(f)                 # 已定性失败：不再交给后续 WPS 轮次，避免重复报错
                 result.failures.append(FileFailure(f, f"无法转换：{reason}"))
                 logger("error", f"   !! 跳过 {f.name}：{reason}")
                 continue

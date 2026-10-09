@@ -6,7 +6,17 @@ __pycache__/
 # 构建产物（PyInstaller）
 dist/
 pyi_build/
-build/shots/
+# build/ 里只保留打包源码（a4merger.spec / make_version_info.py），其余是生成物/临时文件
+build/pyi_work/
+build/frozen_work/
+build/pyi_tmp/
+build/localappdata/
+build/version_info.txt
+build/a4merger.manifest
+build/__pycache__/
+build/*.txt
+build/*.log
+build/*.json
 
 # 日志与诊断
 *.log

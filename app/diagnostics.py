@@ -17,6 +17,41 @@ from core import __version__
 
 _LOGGER_NAME = "a4merger"
 
+# 打包时写入的构建时间戳（build/make_version_info.py 以字符串替换本行）；
+# 开发模式保持 0，界面显示"开发模式"。
+BUILD_TIMESTAMP = 0.0
+
+
+def build_time_text() -> str:
+    """构建时间文本（打包版显示实际构建时间；开发模式显示"开发模式"）。"""
+    if not BUILD_TIMESTAMP:
+        return "开发模式（未打包）"
+    return datetime.datetime.fromtimestamp(BUILD_TIMESTAMP).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def is_frozen() -> bool:
+    return bool(getattr(sys, "frozen", False))
+
+
+def dependency_versions() -> dict[str, str]:
+    """关键依赖版本（关于对话框 / 诊断包用，计划 3.11.10）。"""
+    info: dict[str, str] = {}
+    for name, mod, attr in (("PySide6", "PySide6", "__version__"),
+                            ("pypdf", "pypdf", "__version__"),
+                            ("Pillow", "PIL", "__version__"),
+                            ("fpdf2", "fpdf", "__version__"),
+                            ("msoffcrypto-tool", "msoffcrypto", None)):
+        try:
+            m = __import__(mod)
+            if attr is None:
+                from importlib.metadata import version as _v
+                info[name] = _v(name)
+            else:
+                info[name] = str(getattr(m, attr, "未知"))
+        except Exception:
+            info[name] = "未安装"
+    return info
+
 
 def data_dir() -> Path:
     base = os.environ.get("LOCALAPPDATA")
@@ -111,6 +146,9 @@ def _run_cmd(cmd: list[str], timeout: float = 5.0) -> str:
 def system_info() -> dict:
     info = {
         "app_version": __version__,
+        "build_time": build_time_text(),
+        "frozen": is_frozen(),
+        "long_paths_enabled": _long_paths_enabled(),
         "python": platform.python_version(),
         "os": platform.system(),
         "os_release": platform.release(),
@@ -119,6 +157,7 @@ def system_info() -> dict:
         "hostname": platform.node(),
         "time": datetime.datetime.now().isoformat(timespec="seconds"),
         "cwd": str(Path.cwd()),
+        "dependencies": dependency_versions(),
     }
     try:
         disk = shutil.disk_usage(str(data_dir()))
@@ -128,10 +167,25 @@ def system_info() -> dict:
     return info
 
 
+def _long_paths_enabled() -> bool:
+    try:
+        from core.longpath import long_paths_enabled
+        return bool(long_paths_enabled())
+    except Exception:
+        return False
+
+
 def engine_probe() -> dict:
-    """引擎可用性 + WPS 版本（注册表探测，带超时兜底）。"""
+    """引擎可用性 + WPS 版本（注册表探测，带超时兜底）。
+
+    环境变量 A4_NO_POWERSHELL_PROBE=1 时跳过 PowerShell 版本探测（自动化测试用：
+    受限环境下 exe 再拉 PowerShell 子进程会随机挂起，与功能正确性无关）。
+    """
     from core.converters.manager import detect
     info: dict = detect()
+    if os.environ.get("A4_NO_POWERSHELL_PROBE") == "1":
+        info["wps_install_dir"] = "（已跳过探测）"
+        return info
     wps = _run_cmd(["powershell", "-NoProfile", "-NonInteractive", "-Command",
                     "(Get-ItemProperty 'HKLM:\\SOFTWARE\\Kingsoft\\Office\\6.0\\common' "
                     "-ErrorAction SilentlyContinue).InstallRoot"], timeout=4.0)

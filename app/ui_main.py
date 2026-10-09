@@ -223,12 +223,14 @@ class MainWindow(QMainWindow):
         m_help = mb.addMenu("帮助")
         m_help.addAction("关于", self._show_about)
 
-        # 状态栏：引擎探测 + 任务状态 + 版本号（计划 2.2 / 3.11.10）
+        # 状态栏：引擎探测 + 长路径状态 + 任务状态 + 版本号（计划 2.2 / 3.11.3 / 3.11.10）
         self.lb_engine = QLabel("引擎：探测中…")
+        self.lb_longpath = QLabel("长路径：检测中…")
         self.lb_state = QLabel("就绪")
         self.lb_version = QLabel(f"v{__version__}")
         sb = self.statusBar()
         sb.addWidget(self.lb_engine)
+        sb.addWidget(self.lb_longpath)
         sb.addWidget(self.lb_state, 1)          # 任务状态占满中间
         sb.addPermanentWidget(self.lb_version)
         self._btn_root = btn_root
@@ -611,16 +613,36 @@ class MainWindow(QMainWindow):
 
     def _show_about(self) -> None:
         from PySide6.QtCore import __version__ as qt_ver
-        QMessageBox.about(self, "关于 A4 合并助手",
-                          f"<b>A4 合并助手</b> v{__version__}<br>"
-                          "把每位股东/客户文件夹里的 PDF、图片、Word、Excel、PPT、文本"
-                          "按顺序合并成统一的 A4 PDF。"
-                          "<br><br>更新方式：整包替换 exe（无自动更新）。"
-                          f"<br>Qt {qt_ver} / Python 运行时内置于 exe。")
+        from app.diagnostics import (build_time_text, dependency_versions,
+                                     is_frozen)
+        deps = "、".join(f"{k} {v}" for k, v in dependency_versions().items())
+        QMessageBox.about(
+            self, "关于 A4 合并助手",
+            f"<b>A4 合并助手</b> v{__version__}"
+            f"（{'打包版' if is_frozen() else '开发模式'}）<br>"
+            f"构建时间：{build_time_text()}<br>"
+            "把每位股东/客户文件夹里的 PDF、图片、Word、Excel、PPT、文本"
+            "按顺序合并成统一的 A4 PDF。"
+            "<br><br>更新方式：整包替换 exe（无自动更新）。"
+            f"<br>Qt {qt_ver}<br>依赖：{deps}")
 
     def showEvent(self, ev) -> None:             # noqa: N802
         super().showEvent(ev)
         QTimer.singleShot(50, self._probe_engines)
+        QTimer.singleShot(80, self._check_long_paths)
+
+    def _check_long_paths(self) -> None:
+        """启动探测系统长路径支持（计划 3.11.3）：未开启时中文提示，不静默。"""
+        try:
+            from core.longpath import long_paths_enabled, startup_hint
+            hint = startup_hint()
+            self.lb_longpath.setText(
+                "长路径：已开启" if long_paths_enabled() else "长路径：未开启")
+            if hint:
+                self.lb_longpath.setToolTip(hint)
+                self._append_log("warn", hint)
+        except Exception:
+            self.lb_longpath.setText("长路径：未知")
 
     def _probe_engines(self) -> None:
         try:
@@ -628,6 +650,12 @@ class MainWindow(QMainWindow):
             wps = "WPS 可用" if info.get("wps") else "WPS 不可用"
             native = "纯 Python 可用" if info.get("native") else "纯 Python 不可用"
             self.lb_engine.setText(f"引擎：{wps} / {native}")
-        except Exception:
+            self._append_log(                       # 探测结果同时进日志（排障取证）
+                "info",
+                f"引擎探测：{wps} / {native}"
+                + (f"（WPS 安装目录：{info['wps_install_dir']}）"
+                   if info.get("wps_install_dir") else ""))
+        except Exception as exc:
             self.lb_engine.setText("引擎：探测失败")
+            self._append_log("warn", f"引擎探测失败：{exc}")
         self.lb_version.setText(f"v{__version__}")

@@ -6,6 +6,8 @@ core/encrypt 侧实现（ctypes CryptProtectData），本模块只做存取。
 from __future__ import annotations
 
 import json
+import os
+from pathlib import Path
 from typing import Any
 
 from PySide6.QtCore import QSettings
@@ -14,9 +16,29 @@ ORG = "A4合并助手"
 APP = "A4合并助手"
 
 
+def _scope() -> tuple[str, str, str | None]:
+    """设置作用域：正常情况下用真实的 ORG/APP（注册表）。
+
+    环境变量 A4_SETTINGS_DIR 存在时改用 INI 形式文件（用于打包版自动验收，
+    避免验收受本机残留设置影响，也避免验收过程污染真实设置）。
+    """
+    override = os.environ.get("A4_SETTINGS_DIR")
+    if not override:
+        return ORG, APP, None
+    try:
+        Path(override).mkdir(parents=True, exist_ok=True)
+    except Exception:
+        pass
+    return "A4合并助手-验收", "A4合并助手-验收", str(Path(override) / "settings.ini")
+
+
 class AppSettings:
     def __init__(self) -> None:
-        self.qs = QSettings(ORG, APP)
+        org, app, ini = _scope()
+        if ini:
+            self.qs = QSettings(ini, QSettings.IniFormat)
+        else:
+            self.qs = QSettings(org, app)
         self.qs.setFallbacksEnabled(False)
 
     # ------------------------------------------------------------ 基础

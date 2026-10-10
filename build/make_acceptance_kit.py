@@ -23,6 +23,8 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parent.parent
 EXE = REPO / "dist" / "A4合并助手.exe"
 CHECKLIST = REPO / "docs" / "M5人工异机验收单.md"
+USER_GUIDE = REPO / "docs" / "使用说明-给同事.md"
+FEEDBACK = REPO / "docs" / "M6灰度报障登记表.md"
 SAMPLES = REPO / "tests" / "samples"
 # 每次重新打包后，把指纹填到这里即可让脚本自动拦截"发错 exe"（留空=只打印不校验）
 EXPECTED_SIZE = 0
@@ -75,13 +77,19 @@ def main(argv: list[str] | None = None) -> int:
     if CHECKLIST.exists():
         shutil.copy2(CHECKLIST, out / CHECKLIST.name)
         print("已复制 验收单")
+    for extra in (USER_GUIDE, FEEDBACK):            # M6 灰度材料（同事使用说明/报障表）
+        if extra.exists():
+            shutil.copy2(extra, out / extra.name)
+            print(f"已复制 {extra.name}")
 
     print("\n验收包清单：")
     for p in sorted(out.iterdir()):
+        if p.is_dir():
+            continue
         size = p.stat().st_size
         print(f"  {p.name}    {size/1024/1024:.2f} MB" if size > 1024 * 1024
               else f"  {p.name}    {size/1024:.0f} KB")
-    print(f"\n输出目录：{out}\n把它整个拷到 U 盘 → 目标机器解压/放置到浅目录（如 D:\\A4合并助手\\）即可开始验收。")
+    print(f"\n输出目录：{out}\n把它整个拷到 U 盘 → 目标机器解压/放置到浅目录（如 D:\\A4合并助手\\）即可开始验收/试用。")
     return 0
 
 

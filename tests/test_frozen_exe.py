@@ -90,6 +90,14 @@ def workdir(request) -> Path:
     return d
 
 
+def frozen_env_for(workdir: Path, **extra: str) -> dict:
+    """每个用例独立设置文件（settings.ini 放各自工作目录）：
+    避免前一个用例残留的 output_mode/输出目录/勾选污染后续用例。"""
+    env = frozen_env(**extra)
+    env["A4_SETTINGS_DIR"] = str(workdir)
+    return env
+
+
 def frozen_env(**extra: str) -> dict:
     env = dict(os.environ)
     env.update({
@@ -98,6 +106,9 @@ def frozen_env(**extra: str) -> dict:
         "TMP": str(PYI_TMP),
         "TEMP": str(PYI_TMP),
         "LOCALAPPDATA": str(APP_DATA),          # 沙箱下 %LOCALAPPDATA% 不可写，重定向
+        # 验收设置独立成文件：不读本机残留设置，也不写脏真实设置（QSettings 注册表）
+        "A4_AUTOMATION_DIR": str(WORK),
+        "A4_SETTINGS_DIR": str(WORK / "验收设置"),
     })
     env.update(extra)
     return env
@@ -208,9 +219,9 @@ def test_frozen_no_pip_guard(workdir):
     root.mkdir(parents=True, exist_ok=True)
     report = workdir / "dep_probe.json"
     err_log = workdir / "stderr.txt"
-    env = frozen_env(A4_AUTOMATION="1", A4_AUTOMATION_ROOT=str(root),
-                     A4_AUTOMATION_REPORT=str(report),
-                     A4_AUTOMATION_TIMEOUT="60")
+    env = frozen_env_for(workdir, A4_AUTOMATION="1", A4_AUTOMATION_ROOT=str(root),
+                         A4_AUTOMATION_REPORT=str(report),
+                         A4_AUTOMATION_TIMEOUT="60")
     rc, err = run_exe(["--auto"], env, timeout=120, stderr_to=err_log)
     assert rc == 0, f"退出码 {rc}；stderr={err[:500]}"
     assert report.exists(), f"未生成验收报告；stderr={err[:500]}"
@@ -252,9 +263,9 @@ def test_frozen_full_run_mode_a(workdir):
     """全流程：真实合并纯 PDF 样例（模式A）→ 成品 A4 尺寸/报告/结果对话框内容。"""
     root = copy_samples(workdir / "纯PDF资料")
     report = workdir / "结果.json"
-    env = frozen_env(A4_AUTOMATION="1", A4_AUTOMATION_ROOT=str(root),
-                     A4_AUTOMATION_REPORT=str(report),
-                     A4_AUTOMATION_TIMEOUT="240")
+    env = frozen_env_for(workdir, A4_AUTOMATION="1", A4_AUTOMATION_ROOT=str(root),
+                         A4_AUTOMATION_REPORT=str(report),
+                         A4_AUTOMATION_TIMEOUT="240")
     rc, err = run_exe(["--auto"], env, timeout=RUN_TIMEOUT)
     assert rc == 0, f"退出码 {rc}；stderr={err[:800]}"
     assert report.exists(), f"未生成验收报告；stderr={err[:800]}"
@@ -285,10 +296,10 @@ def test_frozen_full_run_mode_b(workdir):
     root = copy_samples(workdir / "资料")
     out_dir = root / "合并结果"                        # 位于根目录内部
     report = workdir / "结果B.json"
-    env = frozen_env(A4_AUTOMATION="1", A4_AUTOMATION_ROOT=str(root),
-                     A4_AUTOMATION_OUTDIR=str(out_dir),
-                     A4_AUTOMATION_REPORT=str(report),
-                     A4_AUTOMATION_TIMEOUT="240")
+    env = frozen_env_for(workdir, A4_AUTOMATION="1", A4_AUTOMATION_ROOT=str(root),
+                         A4_AUTOMATION_OUTDIR=str(out_dir),
+                         A4_AUTOMATION_REPORT=str(report),
+                         A4_AUTOMATION_TIMEOUT="240")
     rc, err = run_exe(["--auto"], env, timeout=RUN_TIMEOUT)
     assert rc == 0, f"退出码 {rc}；stderr={err[:800]}"
     assert report.exists(), f"未生成验收报告；stderr={err[:800]}"
@@ -313,10 +324,10 @@ def test_frozen_native_engine_text_and_image(workdir):
     root = workdir / "混合资料"
     shutil.copytree(SAMPLES / "mixed", root)
     report = workdir / "结果native.json"
-    env = frozen_env(A4_AUTOMATION="1", A4_AUTOMATION_ROOT=str(root),
-                     A4_AUTOMATION_ENGINE="native",
-                     A4_AUTOMATION_REPORT=str(report),
-                     A4_AUTOMATION_TIMEOUT="300")
+    env = frozen_env_for(workdir, A4_AUTOMATION="1", A4_AUTOMATION_ROOT=str(root),
+                         A4_AUTOMATION_ENGINE="native",
+                         A4_AUTOMATION_REPORT=str(report),
+                         A4_AUTOMATION_TIMEOUT="300")
     rc, err = run_exe(["--auto"], env, timeout=RUN_TIMEOUT)
     assert rc == 0, f"退出码 {rc}；stderr={err[:800]}"
     assert report.exists(), f"未生成验收报告；stderr={err[:800]}"

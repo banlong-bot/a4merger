@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import os
 import sys
+from pathlib import Path
 
 from PySide6.QtCore import QSharedMemory
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
@@ -80,6 +81,11 @@ def main(argv: list[str] | None = None) -> int:
     if auto_run:
         argv.remove("--auto-run")
     auto = auto_run and os.environ.get("A4_AUTOMATION") == "1"
+    if auto:
+        # 自动验收用独立的设置文件：不受本机残留设置影响，也不写脏真实设置
+        os.environ.setdefault("A4_SETTINGS_DIR",
+                              str(Path(os.environ.get("A4_AUTOMATION_DIR", "."))
+                                  / "验收设置"))
     smoke_wait_ms = 1000                              # 冒烟自检存活时长（打包冒烟用）
     for arg in list(argv):
         if arg.startswith("--smoke-wait="):

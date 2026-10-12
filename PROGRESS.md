@@ -252,8 +252,77 @@ Worker 完善：取消时终止 WPS 子进程（core 已支持 cancel 回调）�
 - **验收包脚本**：`build/make_acceptance_kit.py` 的 `EXPECTED_SIZE / EXPECTED_SHA256`
   锁定本次 1.0.1 指纹（发错 exe 会直接中止，提示先更新指纹）。
 
+## 维护记录 3：处理级别新增「当前文件夹」（2026-10）
+
+- **需求**：处理级别原只有「1 级子文件夹 / 2 级子文件夹」，新增第三档
+  **「当前文件夹」＝根目录本身整体合成一份 PDF**（根目录下所有层级的素材按
+  「相对路径自然排序」串成一份成品，根层散文件也计入）。
+- **core**：
+  - `core/collect.py`：`iter_target_folders` 支持 `level=0`（只 yield 根目录本身，不参与
+    "排除树"判定——计划输出文件已由 `skip_files` 排除，故"输出目录＝根目录"也不会自吞）；
+    新增 `LEVEL_TEXTS` / `level_text()`（报告与日志的中文级别名）、
+    `rel_target()`（目标相对根目录的稳定标识，**根目录记为 `.`**）、
+    `target_display()`（界面显示名，级别0 显示为「xxx（当前文件夹）」）。
+  - `core/types.py`：`MergeConfig.validate()` 校验 `level ∈ {0,1,2}`（未知值中文报错）。
+  - `core/runner.py`：`--only` 过滤改用 `rel_target`（根目录＝`.`）；候选清单用显示名；
+    启动日志新增「处理级别：当前文件夹（根目录）／1 级子文件夹／2 级子文件夹」。
+  - `core/report.py`：合并报告的「处理级别」写中文级别名（原为"N 级子文件夹"）。
+- **CLI**：`--level 0|1|2`（默认 1，`--level 3` 由 argparse 直接拒绝）；
+  `python cli.py --level 0` 即"整个根目录合成一份"。
+- **GUI（app/ui_main.py）**：`LEVEL_MAP` 直接由 `LEVEL_TEXTS` 生成（新增项排在最前），
+  默认仍是 1 级；设置读取改为**按级别值映射下标**（历史 `level=1/2` 记忆不受新增项影响）；
+  目标列表把「显示名」与「真实标识」分离——真实标识存 `Qt.UserRole`（根目录为 `.`），
+  `--only` 与勾选记忆一律用标识，因此级别0 下界面显示「xxx（当前文件夹）」而传参仍是 `.`。
+- **打包验收（app/main.py）**：新增 `A4_AUTOMATION_LEVEL`（0/1/2），自动验收可指定级别。
+- **顺带修一个既有坑（模式B 输出目录＝根目录）**：原来 `exclude_dirs` 把输出目录整树排除，
+  用户若把「统一输出目录」选成根目录本身，则**所有目标/素材都被排掉**（级别1/2 下目标为空、
+  级别0 下"无素材"，静默什么都不做）。新增 `core/collect.py: exclusion_dirs(root, output_dir)`：
+  仅当输出目录≠根目录时才排除（防套娃语义不变，输出目录位于根目录内的用例仍覆盖），
+  runner 与 GUI 目标列表统一走它；成品仍由「计划输出路径 + 同名成品识别」两条规则兜底。
+- **测试（+8 例，共 83）**：`tests/test_modes.py` 6 例（级别0 模式A 页数=16、重复运行不套娃、
+  级别0+模式B、级别0+`--only .`、非法级别退出码 2、模式B 输出目录＝根目录）、
+  `tests/test_gui_smoke.py` 1 例（下拉含新项 + 级别0 目标只有根目录且标识为 `.`、
+  `_build_config` 得到 `level=0/only=["."]`）、`tests/test_frozen_exe.py` 1 例
+  （打包版级别0 全流程：目标数=1、成品落在根目录、页数=16、报告写「当前文件夹（根目录）」）。
+- **验证**：`pytest tests/` **83 passed**（72 例开发期 + 11 例打包版冻结验收），
+  连跑两遍稳定（100s / 102s）。
+- **环境注意（仅当 DSH 以受限沙箱跑测试时）**：受限沙箱下 `mode=0o700` 新建的目录**不可读**
+  （pytest 的 `tmp_path`、`tempfile.mkdtemp` 都会踩到；ACL 诊断脚本结论 `UNREADABLE`，
+  不是可修复的 ACL 问题）。**改用完全权限运行即恢复正常**（本次最终验证就是在完全权限下 83 passed）。
+  若只能在受限沙箱里跑，兜底办法：`PYTHONPATH` 指向一个把 `os.mkdir` 的 mode 强制为 0o777 的
+  `sitecustomize.py`，并把 `--basetemp` 指向非点号目录。与工程代码无关，不需要改仓库。
+- **待办**：`dist/A4合并助手.exe` 已在维护记录 4 重打包为 1.0.2.0（见下）。
+
+## 维护记录 4：发布 v1.0.2（2026-10）
+
+- **内容**：处理级别新增「当前文件夹」（级别 0，整个根目录合成一份 PDF）+
+  修复「模式B 统一输出目录选成根目录时收不到素材」。详见维护记录 3。
+- **版本号提升（1.0.1 → 1.0.2）**：`build/make_version_info.py` 的 `VERSION = (1, 0, 2, 0)`
+  （文件属性 1.0.2.0）+ `core/__init__.py` 的 `__version__ = "1.0.2"`（窗口标题/状态栏/关于/诊断包同源）；
+  `tests/test_frozen_exe.py` 的版本断言同步改 1.0.2.0。
+- **重打包**：`python -m PyInstaller --noconfirm --clean --distpath dist --workpath build\pyi_work build\a4merger.spec`
+  → `dist/A4合并助手.exe` **78,636,788 字节**，SHA256 `AB50ADAA…E8D23`，文件版本 1.0.2.0；
+  构建日志含 `Copying icon to EXE` / `Copying version information to EXE` / `Embedding manifest in EXE`；
+  `app/diagnostics.py` 的构建时间戳已由 spec 的 try/finally 还原（`git status` 无该文件改动，已核对）。
+- **验证**：`pytest tests/` **83 passed**，连跑两遍稳定（含 11 例打包版冻结验收，直接驱动新 exe：
+  版本资源 1.0.2.0、图标帧、PE 子系统、单实例、模式A/模式B、**级别0 当前文件夹全流程**、
+  仅纯 Python 引擎全链路）。
+- **顺带修一个测试隔离缺陷（tests/conftest.py）**：开发态 GUI 用例的 MainWindow 会读写
+  `HKCU\Software\A4合并助手`，原来只在会话开始时 `winreg.DeleteKey` 清一次——**该键一旦有子键
+  （`window/geometry` 等，正常用过一次 GUI 就会有）就删不掉**，异常又被吞掉，于是真实使用留下的
+  设置（输出模式＝B、输出目录＝桌面某目录）会串进测试，导致 `test_gui_smoke::test_window_controls`
+  与 `test_results_dialog::test_end_to_end_real_run_summary` 失败。现改为把 GUI 设置重定向到
+  本会话临时 INI（`A4_SETTINGS_DIR`，与打包版验收同一套隔离机制）：既不读本机残留，
+  也不再清除/污染用户的真实设置。排查时曾一度以为是本次改动引入，实为既有隐患被真实设置触发。
+- **文档同步**：README（当前版本 1.0.2 + 资产名 `A4MergeAssistant-v1.0.2.zip`）、
+  `docs/使用说明-给同事.md`（版本 1.0.2.0）、`docs/M5人工异机验收单.md`
+  （指纹改为本次产物 + 标题栏/状态栏期望 v1.0.2 + 新增 2.2b「当前文件夹」验收条目）、
+  `build/make_acceptance_kit.py` 指纹锁定 v1.0.2（发错 exe 会直接中止）。
+- **发布状态**：本地已产出 exe；GitHub Release v1.0.2（tag + 两个资产名）**待推送**
+  （本机直连 github.com 不通，推送需一次性 `-c http.proxy=127.0.0.1:7897`，同维护记录 2）。
+
 ## 下一步
 
-项目收官：milestone 全部完成（M0~M6），git tag：baseline-v0, m0~m6, v1.0.0, v1.0.1。
+项目收官：milestone 全部完成（M0~M6），git tag：baseline-v0, m0~m6, v1.0.0, v1.0.1（v1.0.2 待打）。
 后续维护：新需求/缺陷按「改 → pytest tests/ 全绿 → 重打包 → 发新版」节奏走；
 报障收集用诊断包（诊断 zip 会自动带上版本号，能确认同事跑的是哪一版）。

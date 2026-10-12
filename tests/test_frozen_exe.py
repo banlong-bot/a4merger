@@ -1,7 +1,7 @@
 """M5 打包版（frozen exe）验收测试 —— 直接驱动 dist/A4合并助手.exe。
 
 覆盖计划 M5 验收中可在本机自动化验证的部分：
-  · 版本信息（文件属性 1.0.1.0 / 关于对话框数据源）；
+  · 版本信息（文件属性 1.0.2.0 / 关于对话框数据源）；
   · 单实例拦截（同时启动两个实例，第二个快速退出）；
   · 长路径：启动探测 + 中文提示落日志；
   · 打包版绝不触发 pip（core/deps.py frozen 分支的中文报错原文）；
@@ -156,7 +156,7 @@ def copy_samples(dst: Path) -> Path:
 # ------------------------------------------------------------------ 打包属性
 
 def test_exe_version_resource():
-    """文件属性版本 1.0.1.0 与关键字段（计划 3.11.10）。"""
+    """文件属性版本 1.0.2.0 与关键字段（计划 3.11.10）。"""
     out = subprocess.run(
         ["powershell", "-NoProfile", "-Command",
          f"(Get-Item '{EXE}').VersionInfo | "
@@ -165,8 +165,8 @@ def test_exe_version_resource():
         capture_output=True, text=True, encoding="utf-8", errors="replace",
         timeout=60)
     info = json.loads(out.stdout)
-    assert info["FileVersion"] == "1.0.1.0"
-    assert info["ProductVersion"] == "1.0.1.0"
+    assert info["FileVersion"] == "1.0.2.0"
+    assert info["ProductVersion"] == "1.0.2.0"
     assert "A4" in info["FileDescription"]
     assert info["OriginalFilename"] == "A4合并助手.exe"
 
@@ -375,3 +375,34 @@ def test_frozen_native_engine_text_and_image(workdir):
                    (abs(h - 595.276) < 1 and abs(w - 841.89) < 1), (w, h)
     failed_files = [f["file"] for f in data["failures"]]
     assert len(failed_files) == len(set(failed_files)), f"失败清单有重复项：{failed_files}"
+
+
+def test_frozen_full_run_level0_current_folder(workdir):
+    """全流程：处理级别「当前文件夹」（1.0.2 新增）→ 整棵树只出一份成品，落在根目录。
+
+    打包版验证点：GUI 下拉新增档位能经 `A4_AUTOMATION_LEVEL=0` 选到、
+    目标列表只剩根目录本身（标识 "."）且能通过 `--only` 过滤、
+    成品落在根目录、页数＝整棵树的素材页数之和（pure_pdf：张三 13 + 李四 3）。
+    """
+    root = copy_samples(workdir / "当前文件夹资料")
+    report = workdir / "结果级别0.json"
+    env = frozen_env_for(workdir, A4_AUTOMATION="1", A4_AUTOMATION_ROOT=str(root),
+                         A4_AUTOMATION_LEVEL="0",
+                         A4_AUTOMATION_REPORT=str(report),
+                         A4_AUTOMATION_TIMEOUT="240")
+    rc, err = run_exe(["--auto"], env, timeout=RUN_TIMEOUT)
+    assert rc == 0, f"退出码 {rc}；stderr={err[:800]}"
+    assert report.exists(), f"未生成验收报告；stderr={err[:800]}"
+    data = json.loads(report.read_text(encoding="utf-8"))
+    assert data.get("ok") is True, data
+    assert data["targets"] == 1, data["outputs"]          # 整个根目录＝一个目标
+    out = Path(data["outputs"][0]["out"])
+    assert out.parent == root, out
+    assert out.name == f"【合并】{root.name}.pdf", out
+    assert out.exists() and data["outputs"][0]["done"]
+    pages, sizes = _read_pdf_stats(out)
+    assert pages == data["pages"] == 16, (pages, data["pages"])
+    assert all(abs(w - 595.276) < 1 and abs(h - 841.89) < 1 for w, h in sizes)
+    report_txt = Path(data["report_path"]).read_text(encoding="utf-8-sig")
+    assert "处理级别    ：当前文件夹（根目录）" in report_txt
+    assert not data["failures"]

@@ -15,7 +15,7 @@ import re
 import sys
 from pathlib import Path
 
-VERSION = (1, 0, 1, 0)
+VERSION = (1, 0, 2, 0)
 VERSION_TEXT = ".".join(str(x) for x in VERSION)
 APP_NAME = "A4 合并助手"
 COMPANY = "A4 合并助手"

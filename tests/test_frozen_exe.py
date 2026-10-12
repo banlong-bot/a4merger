@@ -6,6 +6,7 @@
   · 长路径：启动探测 + 中文提示落日志；
   · 打包版绝不触发 pip（core/deps.py frozen 分支的中文报错原文）；
   · --windowed：PE 子系统为 GUI（无控制台黑框）；
+  · 应用图标内嵌（assets/app.ico 的每一档位图都在 exe 资源里）；
   · 全流程可用：真实合并纯 PDF 样例 → A4 尺寸/页数/报告/结果对话框内容。
 计划中"另一台机器"的部分（无 Python 环境、未装 WPS 的机器）无法在本机验证，
 在 PROGRESS.md 中标注为 M6 交付前的人工验收项。
@@ -187,6 +188,32 @@ def test_exe_has_longpathaware_manifest():
     blob = EXE.open("rb").read()
     assert b"longPathAware" in blob
     assert b"requestedExecutionLevel" in blob
+
+
+def test_exe_embeds_app_icon_frames():
+    """exe 内嵌应用图标：图标既写进了 PE 资源，也随 datas 打进了内置档案。
+
+    PyInstaller 把 .ico 的每一帧原样写成 RT_ICON 资源（utils/win32/icon.py），
+    所以「帧字节在不在 exe 里」就是「图标有没有打进去」的充分证据；
+    漏了 spec 的 icon= 时，Windows 会退回 PyInstaller 默认图标——这一项肉眼很难发现。
+    两件事互相独立，必须分别断言：
+      · icon=  → 桌面/任务栏/文件列表里的 exe 图标；
+      · datas  → 打包版运行期的窗口图标（app/icon.py 从 _MEIPASS/assets 读）。
+    """
+    ico = (REPO / "assets" / "app.ico").read_bytes()
+    count = struct.unpack_from("<H", ico, 4)[0]          # ICONDIR.idCount
+    assert count >= 5, f"应用图标尺寸档太少：{count}"
+    blob = EXE.read_bytes()
+    missing = []
+    for i in range(count):
+        entry = 6 + i * 16                               # ICONDIRENTRY 定长 16 字节
+        size, offset = struct.unpack_from("<II", ico, entry + 8)
+        if ico[offset:offset + size] not in blob:
+            missing.append(f"{ico[entry]}x{ico[entry + 1]}")
+    assert not missing, f"exe 未内嵌这些图标档：{missing}"
+    # 内置档案的目录项（注意必须带路径分隔符：裸 "app.ico" 会被模块名 "app.icon" 命中的假阳性）
+    entry_name = ("assets" + os.sep + "app.ico").encode()
+    assert entry_name in blob, "内置档案里没有 assets/app.ico（spec 的 datas 漏了）"
 
 
 # ------------------------------------------------------------------ 启动行为

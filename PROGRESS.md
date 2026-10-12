@@ -199,6 +199,41 @@ Worker 完善：取消时终止 WPS 子进程（core 已支持 cancel 回调）�
 - **全员铺开**：把 `桌面\A4合并助手-验收包` 分发给全体同事即可（exe 放浅目录双击；
   更新方式＝整包替换 exe；报障走「导出诊断包 + 一句话」）。至此 **M0~M6 全部完成**。
 
+## 维护记录 1：应用图标（2026-10）
+
+- **需求**：把应用图标换成用户提供的 `ys.jpg`（764×761）。原 spec 是 `icon=None`，
+  即 exe 从来没有自己的图标（Windows 显示 PyInstaller/默认图标）。
+- **资产（新增 assets/）**：
+  - `assets/app-icon.jpg`：源图入库（199 KB），换图后离线可复现，与 fonts/ 同一取舍；
+  - `assets/app.ico`：178 KB，含 Windows 实际会用到的 **7 档** 16/24/32/48/64/128/256
+    （缺档就会被系统硬缩、发糊；256 档按 ICO 约定写成 PNG 帧）。
+- **build/make_icon.py（新增）**：源图 → 居中裁正方形 → LANCZOS 逐档重采样 → 写 ico。
+  换图标＝替换 `assets/app-icon.jpg` → `python build/make_icon.py` → 重新打包。
+- **打包（build/a4merger.spec）**：
+  - `icon=str(ICON_FILE)`：图标写进 exe 的 PE 资源（桌面/任务栏/文件列表图标）；
+  - `(str(ICON_FILE), "assets")` 进 datas：运行期窗口图标可直接读；
+  - ico 缺失时打包**前**就抛中文错误退出，不再出现"悄悄产出无图标 exe"。
+- **运行期（app/icon.py 新增 + 两处接线）**：按 `sys._MEIPASS/assets/app.ico`（打包）
+  → `工程/assets/app.ico`（开发）顺序定位；`app/main.py` 在 QApplication **之后**
+  `setWindowIcon`（标题栏 + 任务栏），`app/ui_main.py` 主窗口同步设置；
+  定位不到只退回系统默认图标，**绝不影响启动**。
+- **测试（+8 例，67 → 75）**：
+  - `tests/test_app_icon.py` 7 例：源图入库、7 档尺寸齐全且逐档取得出位图、正方形、
+    spec 两处引用（icon=/datas）、打包与开发两条定位路径、主窗口图标非空；
+  - `tests/test_frozen_exe.py::test_exe_embeds_app_icon_frames`：两条独立断言，
+    防"改了 spec 却没人发现图标根本没进 exe"——
+    ① 拿 ico 的每一帧字节去 exe 里比对（PyInstaller 原样写成 RT_ICON）；
+    ② 内置档案里必须有 `assets\app.ico` 目录项（datas 漏了的话，打包版窗口图标会静默退回默认；
+       注意裸字符串 `app.ico` 会被模块名 `app.icon` 命中，断言必须带路径分隔符）。
+- **验证**：`pytest tests/` **75 passed ×2 遍**（92 s / 89 s，含 9 例打包版用例）。
+- **产物**：重打包 `dist/A4合并助手.exe` **78,635,165 字节**
+  （上一版 78,330,762），SHA256 `699C6AFA…93BB21`；
+  构建日志出现 `Copying icon to EXE`；Windows `ExtractAssociatedIcon` 实测取到的就是新图标。
+- **文档同步**：README（构建步骤 + 目录结构 + 用例数）、
+  `docs/M5人工异机验收单.md`（指纹更新为本次产物 + 外观检查加一条"任务栏/标题栏图标"）。
+- **注意**：改图标不涉及功能逻辑，`app/diagnostics.py` 的构建时间戳仍由 spec 的
+  try/finally 保证打包后还原（本次重打包后 `git status` 无该文件改动，已核对）。
+
 ## 下一步
 
 项目收官：milestone 全部完成（M0~M6），git tag：baseline-v0, m0~m6。

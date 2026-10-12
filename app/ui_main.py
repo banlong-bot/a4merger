@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (QCheckBox, QComboBox, QDoubleSpinBox, QFileDialog
                                QSpinBox, QSplitter, QVBoxLayout, QWidget)
 
 from app.diagnostics import build_diagnostic_zip, current_log_file, engine_probe
+from app.icon import app_icon
 from app.results_dialog import ResultDialog
 from app.settings import AppSettings
 from app.worker import RunnerWorker
@@ -40,6 +41,7 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.settings = settings or AppSettings()
         self.setWindowTitle(f"A4 合并助手 v{__version__}")
+        self.setWindowIcon(app_icon())        # 标题栏/任务栏图标（与 exe 图标同源，见 app/icon.py）
         self.resize(1080, 720)
         self.worker: RunnerWorker | None = None
         self._last_cfg: MergeConfig | None = None

@@ -10,6 +10,7 @@ from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 from app.diagnostics import current_log_file, install_excepthook, setup_file_logging
+from app.icon import app_icon
 from app.settings import AppSettings
 from app.ui_main import MainWindow
 
@@ -98,6 +99,11 @@ def main(argv: list[str] | None = None) -> int:
     app = QApplication(argv if argv else sys.argv)
     app.setApplicationName("A4合并助手")
     app.setOrganizationName("A4合并助手")
+    # 应用图标（标题栏 + 任务栏）：必须在 QApplication 之后构造 QIcon；
+    # 打包版与 exe 的 PE 图标同源（assets/app.ico），窗口图标缺失时退回系统默认。
+    icon = app_icon()
+    if not icon.isNull():
+        app.setWindowIcon(icon)
 
     single = SingleInstance()
     if smoke:

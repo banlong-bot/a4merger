@@ -23,16 +23,21 @@
 ```bash
 pip install -r requirements.txt   # PySide6 / pypdf / Pillow / fpdf2 / msoffcrypto-tool
 python run_gui.py                 # 运行
-python -m pytest -q               # 测试（67 用例，含 GUI 冒烟与打包版验收）
+python -m pytest -q               # 测试（75 用例，含 GUI 冒烟与打包版验收）
+python build/make_icon.py         # 由 assets/app-icon.jpg 生成应用图标 assets/app.ico（换图标时执行）
 python -m PyInstaller --noconfirm --clean --distpath dist --workpath build\pyi_work build\a4merger.spec
 ```
+
+> 应用图标：把 `assets/app-icon.jpg` 换成新图 → `python build/make_icon.py` → 重新打包，
+> exe 图标与窗口/任务栏图标一并更新（`assets/app.ico` 已入库，不换图时无需执行）。
 
 ## 目录结构
 
 ```
-app/     主程序（main / ui_main / results_dialog / settings / worker / diagnostics）
-build/   打包 spec 与一键验收脚本
-tests/   pytest 测试（含冻结版 exe 验收：版本资源、无黑框、单实例、全流程真实合并）
+app/     主程序（main / ui_main / results_dialog / settings / worker / diagnostics / icon）
+assets/  应用图标（源图 app-icon.jpg + 生成的 app.ico）
+build/   打包 spec、图标生成脚本与一键验收脚本
+tests/   pytest 测试（含冻结版 exe 验收：版本资源、图标、无黑框、单实例、全流程真实合并）
 docs/    使用说明、开发计划、里程碑验收记录
 fonts/   内置字体（Noto Sans CJK）
 ```

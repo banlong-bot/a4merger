@@ -1,6 +1,7 @@
 """tests/conftest.py —— pytest 共享 fixture。"""
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 import sys
@@ -16,24 +17,25 @@ PY = sys.executable
 
 
 @pytest.fixture(scope="session", autouse=True)
-def _clean_qsettings():
-    """测试会话开始前清掉本机 QSettings 残留（HKCU\\Software\\A4合并助手）。
+def _isolated_settings(tmp_path_factory):
+    """把 GUI 设置重定向到本会话的临时 INI：既不读本机残留，也不写脏真实设置。
 
-    背景：GUI 测试运行时会保存/读取"真实注册表设置"（output_mode、output_dir、
-    checked_targets 等）；前一次测试会话残留的脏值会让后来跑的用例
-    （比如打包版冻结验收加载窗口时）用错输出目录/目标列表。
-    打包版自动验收另有独立设置文件（A4_SETTINGS_DIR），这里兜底清掉开发态残留。
+    背景（1.0.2 修复）：开发态 GUI 用例的 MainWindow 会读写
+    `HKCU\\Software\\A4合并助手`。原来的做法是会话开始时 `winreg.DeleteKey` 清一次，
+    但**该键一旦有子键（`window/geometry` 等，正常用过一次 GUI 就会有）就删不掉**，
+    异常又被吞掉——于是真实使用留下的设置（如「输出模式＝B」「输出目录＝桌面某目录」）
+    会串进测试，导致 test_gui_smoke/test_results_dialog 随机失败。
+    现在统一走 app/settings.py 已支持的 `A4_SETTINGS_DIR`（INI 形式），
+    与打包版验收（test_frozen_exe）同样的隔离方式；本机真实设置不再被测试读写或清除。
     """
-    try:
-        import winreg as _winreg
-        key = r"Software\A4合并助手\A4合并助手"
-        try:
-            _winreg.DeleteKey(_winreg.HKEY_CURRENT_USER, key)
-        except FileNotFoundError:
-            pass
-    except Exception:
-        pass
-    yield
+    d = tmp_path_factory.mktemp("a4_settings")
+    old = os.environ.get("A4_SETTINGS_DIR")
+    os.environ["A4_SETTINGS_DIR"] = str(d)
+    yield d
+    if old is None:
+        os.environ.pop("A4_SETTINGS_DIR", None)
+    else:
+        os.environ["A4_SETTINGS_DIR"] = old
 
 
 def run_cli(*args: str, cwd: Path | None = None) -> subprocess.CompletedProcess:

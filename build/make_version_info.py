@@ -1,7 +1,8 @@
 # -*- mode: python ; coding: utf-8 -*-
 """build/make_version_info.py —— 生成 Windows version resource 与 longPathAware manifest。
 
-计划 3.11.10：`--version-file` 写入文件属性版本 1.0.0.0，关于对话框显示版本号与构建时间；
+计划 3.11.10：`--version-file` 写入文件属性版本（见下方 VERSION，发布新版本时改这里），
+关于对话框显示版本号与构建时间；
 计划 3.11.3：manifest 声明 longPathAware，让 exe 获得长路径感知。
 
 被 build/a4merger.spec 导入使用（打包时自动写出 version_info.txt 与 a4merger.manifest）；
@@ -14,7 +15,7 @@ import re
 import sys
 from pathlib import Path
 
-VERSION = (1, 0, 0, 0)
+VERSION = (1, 0, 1, 0)
 VERSION_TEXT = ".".join(str(x) for x in VERSION)
 APP_NAME = "A4 合并助手"
 COMPANY = "A4 合并助手"

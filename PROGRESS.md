@@ -226,16 +226,34 @@ Worker 完善：取消时终止 WPS 子进程（core 已支持 cancel 回调）�
     ② 内置档案里必须有 `assets\app.ico` 目录项（datas 漏了的话，打包版窗口图标会静默退回默认；
        注意裸字符串 `app.ico` 会被模块名 `app.icon` 命中，断言必须带路径分隔符）。
 - **验证**：`pytest tests/` **75 passed ×2 遍**（92 s / 89 s，含 9 例打包版用例）。
-- **产物**：重打包 `dist/A4合并助手.exe` **78,635,165 字节**
-  （上一版 78,330,762），SHA256 `699C6AFA…93BB21`；
-  构建日志出现 `Copying icon to EXE`；Windows `ExtractAssociatedIcon` 实测取到的就是新图标。
+- **产物**：重打包 `dist/A4合并助手.exe` **78,635,165 字节** / SHA256 `699C6AFA…93BB21`
+  （中间态，随即被下面的 1.0.1 正式版取代）；构建日志出现 `Copying icon to EXE`；
+  Windows `ExtractAssociatedIcon` 实测取到的就是新图标。
 - **文档同步**：README（构建步骤 + 目录结构 + 用例数）、
   `docs/M5人工异机验收单.md`（指纹更新为本次产物 + 外观检查加一条"任务栏/标题栏图标"）。
 - **注意**：改图标不涉及功能逻辑，`app/diagnostics.py` 的构建时间戳仍由 spec 的
   try/finally 保证打包后还原（本次重打包后 `git status` 无该文件改动，已核对）。
 
+## 维护记录 2：发布 v1.0.1（2026-10）
+
+- **提交**：`50c52ad feat(icon): 应用图标替换为 ys.jpg（写进 exe PE 资源 + 窗口/任务栏图标），补 8 例回归`
+  ——已推送 `origin/main`（本机直连 github.com 不通，推送走系统代理 `127.0.0.1:7897`，
+  仅一次性 `-c http.proxy=…`，**未写进仓库配置**）。
+- **版本号提升（1.0.0 → 1.0.1）**：`build/make_version_info.py` 的 `VERSION = (1, 0, 1, 0)`
+  （文件属性 1.0.1.0）+ `core/__init__.py` 的 `__version__ = "1.0.1"`（窗口标题/状态栏/关于/诊断包同源）；
+  `tests/test_frozen_exe.py` 的版本断言同步改 1.0.1.0。**不提升的话，Release 标 v1.0.1
+  而 exe 属性仍是 1.0.0.0，同事按验收单核对文件版本会以为发错包。**
+- **重打包**：`dist/A4合并助手.exe` **78,636,490 字节**，SHA256 `2B6C8C16…F9F671`，文件版本 1.0.1.0；
+  图标 7 档帧 + 内置档案 `assets\app.ico` 均已在 exe 内复核。
+- **发布**：GitHub Release **v1.0.1**（tag 指向本次提交），资产沿用 v1.0.0 的英文命名规范：
+  `A4MergeAssistant-v1.0.1.zip`（解压即 `A4合并助手.exe`）与 `A4MergeAssistant.exe`。
+- **文档同步**：README（下载资产名 + 1.0.1 变更说明）、`docs/使用说明-给同事.md`（版本 1.0.1.0）、
+  `docs/M5人工异机验收单.md`（指纹变更记录：M5 → 1.0.1，标题栏/状态栏期望版本改 v1.0.1）。
+- **验收包脚本**：`build/make_acceptance_kit.py` 的 `EXPECTED_SIZE / EXPECTED_SHA256`
+  锁定本次 1.0.1 指纹（发错 exe 会直接中止，提示先更新指纹）。
+
 ## 下一步
 
-项目收官：milestone 全部完成（M0~M6），git tag：baseline-v0, m0~m6。
+项目收官：milestone 全部完成（M0~M6），git tag：baseline-v0, m0~m6, v1.0.0, v1.0.1。
 后续维护：新需求/缺陷按「改 → pytest tests/ 全绿 → 重打包 → 发新版」节奏走；
 报障收集用诊断包（诊断 zip 会自动带上版本号，能确认同事跑的是哪一版）。

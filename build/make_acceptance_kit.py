@@ -27,8 +27,9 @@ USER_GUIDE = REPO / "docs" / "使用说明-给同事.md"
 FEEDBACK = REPO / "docs" / "M6灰度报障登记表.md"
 SAMPLES = REPO / "tests" / "samples"
 # 每次重新打包后，把指纹填到这里即可让脚本自动拦截"发错 exe"（留空=只打印不校验）
-EXPECTED_SIZE = 0
-EXPECTED_SHA256 = ""
+# 当前锁定：v1.0.1（78,636,490 字节 / SHA256 2B6C8C16…F9F671）
+EXPECTED_SIZE = 78636490
+EXPECTED_SHA256 = "2B6C8C16875D05A97BF68372AACD1955CCCD41385B68E47FCA0C64075EF9F671"
 
 
 def sha256(path: Path) -> str:

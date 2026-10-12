@@ -76,6 +76,24 @@ def test_targets_refresh(win):
     assert win.lb_target_status.text() == "已选 2/2"
 
 
+def test_level0_current_folder(win):
+    """处理级别含「当前文件夹（根目录）」；选中后目标只有根目录本身（标识 "."）。"""
+    labels = [win.cb_level.itemText(i) for i in range(win.cb_level.count())]
+    assert "当前文件夹（根目录）" in labels
+    assert labels[0] == "当前文件夹（根目录）"          # 级别 0 排在最前
+    win.cb_level.setCurrentIndex(labels.index("1 级子文件夹"))
+    win.ed_root.setText(str(SAMPLES / "pure_pdf"))
+    assert win.lw_targets.count() == 2                 # 1 级子文件夹＝两个目标
+    win.cb_level.setCurrentIndex(labels.index("当前文件夹（根目录）"))
+    assert win.lw_targets.count() == 1
+    item = win.lw_targets.item(0)
+    assert item.data(Qt.UserRole) == "."
+    assert "当前文件夹" in item.text()
+    assert win._checked_targets() == ["."]
+    cfg = win._build_config()
+    assert cfg is not None and cfg.level == 0 and cfg.only == ["."]
+
+
 def test_targets_uncheck_all(win, monkeypatch):
     """全不选 → 状态更新；开始构建配置被拦截并弹提示（modal 需 monkeypatch）。"""
     warned: list[str] = []

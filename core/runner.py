@@ -7,8 +7,9 @@ import tempfile
 import time
 from pathlib import Path
 
-from core.collect import (PDF_EXTS, SUPPORTED_EXTS, collect_files,
-                          iter_target_folders, plan_outputs, wps_kind)
+from core.collect import (PDF_EXTS, SUPPORTED_EXTS, collect_files, exclusion_dirs,
+                          iter_target_folders, level_text, plan_outputs,
+                          rel_target, target_display, wps_kind)
 from core.converters.base import ConvertTask
 from core.converters.backend_native import NativeConverter
 from core.converters.backend_wps import WpsConverter, run_wps_worker
@@ -35,7 +36,7 @@ def _filter_only(targets: list[Path], only: list[str] | None,
     """--only 过滤（计划 3.11.5）：相对路径精确匹配；名称简写仅全局唯一时可用。"""
     if not only:
         return targets
-    rels = {t: str(t.relative_to(root)).replace("\\", "/") for t in targets}
+    rels = {t: rel_target(root, t) for t in targets}
     selected: list[Path] = []
     for token in only:
         token = token.strip().replace("\\", "/")
@@ -47,7 +48,7 @@ def _filter_only(targets: list[Path], only: list[str] | None,
             if name_hits:
                 hits = name_hits            # 名称简写：唯一可选，不唯一则进歧义分支
         if not hits:
-            cand = "、".join(sorted(rels.values()))
+            cand = "、".join(sorted(target_display(root, t) for t in targets))
             raise ValueError(f"--only 指定的「{token}」没有匹配的目标（候选：{cand}）")
         if len(hits) > 1:
             dup = "、".join(sorted(rels[t] for t in hits))
@@ -80,7 +81,7 @@ def run(cfg: MergeConfig, on_log=None, on_progress=None,
         except OSError as exc:
             raise ValueError(f"输出目录创建失败：{cfg.output_dir}（{exc}）")
 
-    exclude_dirs = {cfg.output_dir.resolve()} if cfg.output_dir else set()
+    exclude_dirs = exclusion_dirs(cfg.root, cfg.output_dir)
     targets = list(iter_target_folders(cfg.root, cfg.level, exclude_dirs))
     targets = _filter_only(targets, cfg.only, cfg.root)
     if not targets:
@@ -88,6 +89,7 @@ def run(cfg: MergeConfig, on_log=None, on_progress=None,
         return RunSummary(started, time.time() - t0, engine_info, cfg, [])
 
     logger("info", f"根目录：{cfg.root}")
+    logger("info", f"处理级别：{level_text(cfg.level)}")
     logger("info", f"待处理文件夹：{len(targets)} 个" +
            ("（预览模式，不会生成文件）" if cfg.dry_run else ""))
 
@@ -138,7 +140,7 @@ def _process_folder(folder: Path, out_path: Path, cfg: MergeConfig, tmp_root: Pa
     result = FolderResult(folder=folder, label=label, out_path=out_path,
                           files_count=0, replaced_output=out_path.exists())
 
-    skip_dirs = {cfg.output_dir.resolve()} if cfg.output_dir else set()
+    skip_dirs = exclusion_dirs(cfg.root, cfg.output_dir)
     files, lookalikes, ignored = collect_files(
         folder, skip_dirs, all_outputs, cfg.output_name,
         skip_lookalikes=not cfg.include_lookalikes)

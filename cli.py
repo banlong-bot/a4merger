@@ -10,6 +10,7 @@
 
 常用用法：
     python cli.py                          # 每个一级子文件夹合成一个 PDF（默认）
+    python cli.py --level 0                # 只把根目录（当前文件夹）整体合成一个 PDF
     python cli.py --level 2                # 改为每个二级子文件夹各合成一个 PDF
     python cli.py -r "D:\\某目录"           # 指定根目录
     python cli.py --output-dir "D:\\合并结果"   # 统一输出目录
@@ -35,8 +36,9 @@ def build_parser() -> argparse.ArgumentParser:
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     p.add_argument("-r", "--root", default=None, help="根目录（默认为本脚本所在目录）")
-    p.add_argument("--level", type=int, default=1, choices=(1, 2),
-                   help="处理第几级子文件夹：1=每个一级子文件夹各合成一个 PDF（默认），"
+    p.add_argument("--level", type=int, default=1, choices=(0, 1, 2),
+                   help="处理级别：0=只处理当前文件夹（根目录本身，整棵树合成一个 PDF），"
+                        "1=每个一级子文件夹各合成一个 PDF（默认），"
                         "2=每个二级子文件夹各合成一个 PDF")
     p.add_argument("--output-name", default="【合并】{folder}.pdf",
                    help="输出文件名模板，默认 【合并】{folder}.pdf（{folder} 表示文件夹名）")

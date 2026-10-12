@@ -79,12 +79,67 @@ def collect_files(folder: Path, skip_dirs: set[Path], skip_files: set[Path],
     return files, lookalikes, ignored
 
 
+LEVEL_TEXTS = {0: "当前文件夹（根目录）", 1: "1 级子文件夹", 2: "2 级子文件夹"}
+
+
+def level_text(level: int) -> str:
+    """处理级别的人类可读名称（报告/日志用）。"""
+    return LEVEL_TEXTS.get(level, f"{level} 级子文件夹")
+
+
+def rel_target(root: Path, folder: Path) -> str:
+    """目标相对根目录的路径（根目录本身记为 "."）。
+
+    用于 `--only` 参数与 GUI 勾选记忆：同一目标的字符串表示必须稳定一致。
+    """
+    try:
+        rel = str(folder.relative_to(root)).replace("\\", "/")
+    except ValueError:
+        return str(folder)
+    return rel or "."
+
+
+def target_display(root: Path, folder: Path) -> str:
+    """目标在界面/日志里的显示名（根目录本身显示为「xxx（当前文件夹）」）。"""
+    rel = rel_target(root, folder)
+    if rel == ".":
+        return f"{folder.name or str(folder)}（当前文件夹）"
+    return rel
+
+
+def exclusion_dirs(root: Path, output_dir: Path | None) -> set[Path]:
+    """模式B 需要整树排除的目录（输出目录，防套娃）。
+
+    例外：输出目录＝根目录本身时不排除——否则「当前文件夹/一级/二级」的任何目标
+    都会被整树排掉，等于什么都不做。该目录里的成品文件另有两条排除规则兜底：
+    计划输出路径（skip_files）与「与所在文件夹同名」的成品识别。
+    """
+    if output_dir is None:
+        return set()
+    try:
+        od = output_dir.resolve()
+    except OSError:
+        od = output_dir
+    try:
+        if od == root.resolve():
+            return set()
+    except OSError:
+        pass
+    return {od}
+
+
 def iter_target_folders(root: Path, level: int, exclude_dirs: set[Path]):
-    """level=1（默认）：每个一级子文件夹各合成一个 PDF；
+    """level=0：只把根目录本身当作一个目标（当前文件夹，整棵树合成一个 PDF）；
+    level=1（默认）：每个一级子文件夹各合成一个 PDF；
     level=2：每个二级子文件夹各合成一个 PDF。
     一级文件夹/根目录里若直接放了受支持的文件，也会被当作一个目标。
     exclude_dirs：整棵树不参与（模式B 输出目录）。
     """
+    if level <= 0:
+        # 当前文件夹＝根目录本身：不参与"排除树"判定（计划输出文件已由 skip_files 排除）
+        yield root
+        return
+
     def _clean(dirs):
         out = []
         for d in dirs:

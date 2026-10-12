@@ -278,6 +278,13 @@ def _schedule_automation(win, app) -> None:
         if out_dir:
             win.ra_mode_b.setChecked(True)
             win.ed_outdir.setText(out_dir)
+        level = os.environ.get("A4_AUTOMATION_LEVEL", "")       # 0/1/2（可空＝默认）
+        if level:
+            from app.ui_main import _level_index
+            try:
+                win.cb_level.setCurrentIndex(_level_index(int(level)))
+            except ValueError:
+                pass
         if engine:
             from app.ui_main import ENGINE_MAP
             for idx, (label, value) in enumerate(ENGINE_MAP.items()):

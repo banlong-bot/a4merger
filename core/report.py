@@ -5,6 +5,7 @@ import datetime
 from pathlib import Path
 
 from core import __version__
+from core.collect import level_text
 from core.types import RunSummary
 
 
@@ -25,7 +26,7 @@ def write_report(path: Path, summary: RunSummary) -> Path:
     lines.append(f"根目录      ：{cfg.root}")
     lines.append(f"输出模式    ：{mode}"
                  + (f" → {cfg.output_dir}" if cfg.output_dir else ""))
-    lines.append(f"处理级别    ：{cfg.level} 级子文件夹")
+    lines.append(f"处理级别    ：{level_text(cfg.level)}")
     lines.append(f"文件名模板  ：{cfg.output_name}")
     lines.append(f"A4 方向     ：{cfg.orientation}　　留白：{cfg.margin_mm}mm")
     lines.append(f"图片适配    ：{cfg.image_fit}　　引擎：{cfg.engine}")

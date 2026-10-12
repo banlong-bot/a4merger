@@ -8,6 +8,86 @@ from conftest import SAMPLES, run_cli
 from compare_pdfs import page_signature
 
 
+def test_level0_current_folder(scratch: Path):
+    """级别0（当前文件夹）：根目录整棵树合成一个 PDF，成品落在根目录内。"""
+    root = scratch / "当前"
+    shutil.copytree(SAMPLES / "pure_pdf", root)
+    p = run_cli("-r", str(root), "--level", "0", "--engine", "native")
+    assert p.returncode == 0, p.stdout + p.stderr
+    out = root / "【合并】当前.pdf"
+    assert out.exists()
+    assert len(page_signature(out)) == 16      # 张三 13 页 + 李四 3 页
+    assert "处理级别：当前文件夹（根目录）" in p.stdout
+    report = root / "合并报告.txt"
+    assert report.exists()
+    assert "处理级别    ：当前文件夹（根目录）" in report.read_text(encoding="utf-8-sig")
+
+
+def test_level0_rerun_not_nested(scratch: Path):
+    """级别0 重复运行：上次成品与合并报告都不被当素材（页数不翻倍）。"""
+    root = scratch / "cur"
+    shutil.copytree(SAMPLES / "pure_pdf", root)
+    args = ("-r", str(root), "--level", "0", "--engine", "native")
+    p1 = run_cli(*args)
+    assert p1.returncode == 0, p1.stdout + p1.stderr
+    out = root / "【合并】cur.pdf"
+    n1 = len(page_signature(out))
+    p2 = run_cli(*args)
+    assert p2.returncode == 0, p2.stdout + p2.stderr
+    n2 = len(page_signature(out))
+    assert n1 == n2 == 16, f"套娃发生：{n1} → {n2}"
+
+
+def test_level0_mode_b(scratch: Path):
+    """级别0 + 模式B：整棵树一个成品，集中输出到指定目录。"""
+    root = scratch / "cur"
+    shutil.copytree(SAMPLES / "pure_pdf", root)
+    out = scratch / "合并结果"
+    p = run_cli("-r", str(root), "--level", "0", "--output-dir", str(out),
+                "--engine", "native")
+    assert p.returncode == 0, p.stdout + p.stderr
+    assert (out / "【合并】cur.pdf").exists()
+    assert len(page_signature(out / "【合并】cur.pdf")) == 16
+    assert not (root / "【合并】cur.pdf").exists()
+
+
+def test_level0_only_root(scratch: Path):
+    """级别0 的 --only 目标标识为 "."（GUI 勾选记忆与命令行共用同一标识）。"""
+    root = scratch / "cur"
+    shutil.copytree(SAMPLES / "pure_pdf", root)
+    p = run_cli("-r", str(root), "--level", "0", "--only", ".",
+                "--engine", "native", "--no-report")
+    assert p.returncode == 0, p.stdout + p.stderr
+    assert (root / "【合并】cur.pdf").exists()
+
+
+def test_level_invalid_rejected(scratch: Path):
+    """未知级别：CLI 直接拒绝（argparse 退出码 2）。"""
+    root = scratch / "pure"
+    shutil.copytree(SAMPLES / "pure_pdf", root)
+    p = run_cli("-r", str(root), "--level", "3")
+    assert p.returncode == 2
+
+
+def test_mode_b_output_dir_is_root(scratch: Path):
+    """模式B 输出目录＝根目录本身：不再整树排除（否则一个素材都收集不到）。
+
+    级别0 下这就是「成品放回当前文件夹」，等价于模式A 的落点；重复运行不套娃。
+    """
+    root = scratch / "cur"
+    shutil.copytree(SAMPLES / "pure_pdf", root)
+    args = ("-r", str(root), "--level", "0", "--output-dir", str(root),
+            "--engine", "native")
+    p1 = run_cli(*args)
+    assert p1.returncode == 0, p1.stdout + p1.stderr
+    out = root / "【合并】cur.pdf"
+    assert out.exists(), "输出目录＝根目录时被整树排除，成品没生成"
+    n1 = len(page_signature(out))
+    p2 = run_cli(*args)
+    assert p2.returncode == 0, p2.stdout + p2.stderr
+    assert len(page_signature(out)) == n1 == 16, "重复运行套娃了"
+
+
 def test_mode_b_unified_output(scratch: Path):
     """模式B：所有成品集中在指定输出目录，自动创建。"""
     root = scratch / "pure"

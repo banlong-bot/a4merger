@@ -16,7 +16,7 @@ CancelFn = Callable[[], bool]
 class MergeConfig:
     """一次运行的全部配置（对应 cli 参数 / GUI 表单）。"""
     root: Path
-    level: int = 1
+    level: int = 1                          # 0=当前文件夹（根目录本身）/ 1=一级 / 2=二级
     output_name: str = "【合并】{folder}.pdf"
     output_dir: Optional[Path] = None       # 模式B：统一输出目录
     only: Optional[list[str]] = None        # 相对路径子集（--only）
@@ -41,6 +41,8 @@ class MergeConfig:
         for m in re.finditer(r"\{([^{}]*)\}", self.output_name):
             if m.group(1) not in ("folder", "name"):
                 errs.append(f"模板含未知占位符 {{{m.group(1)}}}（仅支持 {{folder}}/{{name}}，将按字面输出）")
+        if self.level not in (0, 1, 2):
+            errs.append(f"未知处理级别：{self.level}（仅支持 0=当前文件夹 / 1 / 2）")
         if self.orientation not in ("auto", "portrait", "landscape"):
             errs.append(f"未知方向：{self.orientation}")
         if self.image_fit not in ("page", "origin"):

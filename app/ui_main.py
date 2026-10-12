@@ -24,16 +24,25 @@ from app.results_dialog import ResultDialog
 from app.settings import AppSettings
 from app.worker import RunnerWorker
 from core import __version__
-from core.collect import iter_target_folders
+from core.collect import (LEVEL_TEXTS, exclusion_dirs, iter_target_folders,
+                          rel_target, target_display)
 from core.types import MergeConfig
 
 LOG_MAX_BLOCKS = 5000      # 日志区容量截断（3.11.7）
 LOG_TRIM_AMOUNT = 1000
 
-LEVEL_MAP = {"1 级子文件夹": 1, "2 级子文件夹": 2}
+# 处理级别：0=当前文件夹（根目录本身）/ 1=一级子文件夹 / 2=二级子文件夹
+LEVEL_MAP = {LEVEL_TEXTS[0]: 0, LEVEL_TEXTS[1]: 1, LEVEL_TEXTS[2]: 2}
+DEFAULT_LEVEL = 1
 ORIENTATION_MAP = {"自动": "auto", "纵向": "portrait", "横向": "landscape"}
 IMAGE_FIT_MAP = {"铺满 A4 页面": "page", "只缩小不放大": "origin"}
 ENGINE_MAP = {"自动": "auto", "仅 WPS": "wps", "仅纯 Python": "native"}
+
+
+def _level_index(level: int) -> int:
+    """级别值 → 下拉框下标（历史设置里的未知值回落到默认级别）。"""
+    values = list(LEVEL_MAP.values())
+    return values.index(level) if level in values else values.index(DEFAULT_LEVEL)
 
 
 class MainWindow(QMainWindow):
@@ -263,7 +272,7 @@ class MainWindow(QMainWindow):
         self.ra_mode_b.setChecked(s.get_str("output_mode") == "B")
         self.ra_mode_a.setChecked(s.get_str("output_mode") != "B")
         self.ed_outdir.setText(s.get_str("output_dir"))
-        self.cb_level.setCurrentIndex(0 if s.get_int("level", 1) == 1 else 1)
+        self.cb_level.setCurrentIndex(_level_index(s.get_int("level", DEFAULT_LEVEL)))
         self.ed_template.setText(s.get_str("output_name", "【合并】{folder}.pdf"))
         self.cb_report.setChecked(s.get_bool("report", True))
         self.sp_margin.setValue(float(s.get_str("margin_mm", "0.0") or "0.0"))
@@ -303,9 +312,7 @@ class MainWindow(QMainWindow):
         s.set("include_lookalikes", self.cb_lookalike.isChecked())
         s.set("no_prompt", self.cb_no_prompt.isChecked())
         s.set("dry_run", self.cb_dryrun.isChecked())
-        checked = [self.lw_targets.item(i).text()
-                   for i in range(self.lw_targets.count())
-                   if self.lw_targets.item(i).checkState() == Qt.Checked]
+        checked = self._checked_targets()
         s.set_str_list("checked_targets", checked)
         pws = [x.strip() for x in self.pt_passwords.toPlainText().replace("，", ",").splitlines() if x.strip()]
         if pws and self.cb_remember_pw.isChecked():
@@ -357,14 +364,19 @@ class MainWindow(QMainWindow):
         self._btn_outdir.setEnabled(is_b)
 
     def _refresh_targets(self) -> None:
-        """按根目录+级别刷新目标文件夹候选（保留勾选记忆，排除模式B输出目录）。"""
+        """按根目录+级别刷新目标文件夹候选（保留勾选记忆，排除模式B输出目录）。
+
+        列表显示名用 target_display（级别0 显示为「xxx（当前文件夹）」）；
+        真实目标标识（相对根目录的路径，根目录记为 "."）存在 UserRole 里，
+        传给 core 的 --only 与勾选记忆一律用该标识。
+        """
         root = Path(self.ed_root.text().strip())
         if not root.is_dir():
             self.lw_targets.clear()
             self.lb_target_status.setText("请先选择有效的根目录")
             return
         out_dir = Path(self.ed_outdir.text().strip()) if self.ra_mode_b.isChecked() else None
-        exclude = {out_dir.resolve()} if out_dir else set()
+        exclude = exclusion_dirs(root, out_dir)
         try:
             targets = list(iter_target_folders(root, LEVEL_MAP[self.cb_level.currentText()],
                                                exclude))
@@ -375,8 +387,9 @@ class MainWindow(QMainWindow):
         self.lw_targets.blockSignals(True)
         self.lw_targets.clear()
         for t in targets:
-            rel = str(t.relative_to(root)).replace("\\", "/")
-            item = QListWidgetItem(rel)
+            rel = rel_target(root, t)
+            item = QListWidgetItem(target_display(root, t))
+            item.setData(Qt.UserRole, rel)          # 真实标识（--only 用）
             item.setFlags(item.flags() | Qt.ItemIsUserCheckable)
             if remembered or was_empty:
                 item.setCheckState(Qt.Checked)
@@ -385,6 +398,17 @@ class MainWindow(QMainWindow):
             self.lw_targets.addItem(item)
         self.lw_targets.blockSignals(False)
         self._update_target_status()
+
+    def _checked_targets(self) -> list[str]:
+        """已勾选目标的真实标识（相对根目录路径，根目录记为 "."）。"""
+        out: list[str] = []
+        for i in range(self.lw_targets.count()):
+            item = self.lw_targets.item(i)
+            if item.checkState() != Qt.Checked:
+                continue
+            rel = item.data(Qt.UserRole)
+            out.append(str(rel) if rel else item.text())
+        return out
 
     def _set_targets_checked(self, on: bool) -> None:
         for i in range(self.lw_targets.count()):
@@ -417,9 +441,7 @@ class MainWindow(QMainWindow):
         if root is None or not root.is_dir():
             QMessageBox.warning(self, "提示", "请先选择有效的根目录。")
             return None
-        checked = [self.lw_targets.item(i).text()
-                   for i in range(self.lw_targets.count())
-                   if self.lw_targets.item(i).checkState() == Qt.Checked]
+        checked = self._checked_targets()
         if not checked:
             QMessageBox.warning(self, "提示", "请至少勾选一个目标文件夹。")
             return None

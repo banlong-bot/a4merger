@@ -326,6 +326,13 @@ Worker 完善：取消时终止 WPS 子进程（core 已支持 cancel 回调）�
 - **提交拆分**：`feat(level)` 功能 → `test(conftest)` 测试隔离修复 → `chore(release)` 版本与文档，
   再打 tag；便于日后回滚或摘取单个改动。
 
+- **遗留（未处理，勿当 bug）**：v1.0.2 发布期间（2026-10-12 21:13）工作区里
+  `assets/app-icon.jpg` 与重新生成的 `assets/app.ico` 被替换（未提交，非本次改动）。
+  **已发布的 v1.0.2 exe 是 20:47 打包的，内嵌的仍是旧图标**，因此当前工作区下
+  `tests/test_frozen_exe.py::test_exe_embeds_app_icon_frames` 会对这个 exe 报失败——
+  这是"exe 与工作区图标不一致"，不是打包或代码回归。用户决定**先不动图标**。
+  后续若要启用新图标：提交图标 → 提版本号（1.0.3）→ 重打包 → 更新指纹/验收单 → 发 Release。
+
 ## 下一步
 
 项目收官：milestone 全部完成（M0~M6），git tag：baseline-v0, m0~m6, v1.0.0, v1.0.1, v1.0.2。

@@ -318,11 +318,16 @@ Worker 完善：取消时终止 WPS 子进程（core 已支持 cancel 回调）�
   `docs/使用说明-给同事.md`（版本 1.0.2.0）、`docs/M5人工异机验收单.md`
   （指纹改为本次产物 + 标题栏/状态栏期望 v1.0.2 + 新增 2.2b「当前文件夹」验收条目）、
   `build/make_acceptance_kit.py` 指纹锁定 v1.0.2（发错 exe 会直接中止）。
-- **发布状态**：本地已产出 exe；GitHub Release v1.0.2（tag + 两个资产名）**待推送**
-  （本机直连 github.com 不通，推送需一次性 `-c http.proxy=127.0.0.1:7897`，同维护记录 2）。
+- **发布**：GitHub Release **v1.0.2（Latest）已发布** →
+  https://github.com/banlong-bot/a4merger/releases/tag/v1.0.2
+  资产沿用英文命名规范：`A4MergeAssistant-v1.0.2.zip`（78,239,217 字节，内含 `A4合并助手.exe`）
+  与 `A4MergeAssistant.exe`（78,636,788 字节）。tag `v1.0.2` 指向提交 `c34bb70`，main 已推送。
+  本次直连 github.com 可用，**无需代理**（维护记录 2 里的代理参数只是当时需要）。
+- **提交拆分**：`feat(level)` 功能 → `test(conftest)` 测试隔离修复 → `chore(release)` 版本与文档，
+  再打 tag；便于日后回滚或摘取单个改动。
 
 ## 下一步
 
-项目收官：milestone 全部完成（M0~M6），git tag：baseline-v0, m0~m6, v1.0.0, v1.0.1（v1.0.2 待打）。
+项目收官：milestone 全部完成（M0~M6），git tag：baseline-v0, m0~m6, v1.0.0, v1.0.1, v1.0.2。
 后续维护：新需求/缺陷按「改 → pytest tests/ 全绿 → 重打包 → 发新版」节奏走；
 报障收集用诊断包（诊断 zip 会自动带上版本号，能确认同事跑的是哪一版）。

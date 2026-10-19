@@ -333,8 +333,52 @@ Worker 完善：取消时终止 WPS 子进程（core 已支持 cancel 回调）�
   这是"exe 与工作区图标不一致"，不是打包或代码回归。用户决定**先不动图标**。
   后续若要启用新图标：提交图标 → 提版本号（1.0.3）→ 重打包 → 更新指纹/验收单 → 发 Release。
 
+## 维护记录 5（M7：遇到 Excel 跳过，2026-10）— 代码完成，未打包/未发版
+
+- **需求来源**：计划文档没有这一项，是用户新增需求（原话「增加一个可选项，遇到 excel 可跳过」），
+  经我提问确认三条设计后实现：① 范围只含 `.xls/.xlsx`（`~$` 临时锁文件本来就静默排除，不重复处理）；
+  ② **默认不勾选**，保持旧行为完全不变；③ 环境为项目文件夹改回 `C:\Users\25792\Desktop\66` 后正常。
+  ——属于计划外新增，故单独记为 M7，不改动计划文档（计划文档是里程碑基线）。
+- **core 层**：
+  - `core/types.py`：`MergeConfig.skip_excel: bool = False`；`FolderResult.skipped_excel: list[Path]`。
+  - `core/collect.py`：新增 `SKIP_EXCEL_EXTS = {".xls", ".xlsx"}`、`is_skippable_excel(path)`、
+    `partition_skipped_excel(files) -> (kept, skipped)`（保序，不动只读的 collect_files）。
+  - `core/runner.py`：`_process_folder` 里在算出「支持类型」的 `used` 后分流——跳过项写入
+    `result.skipped_excel`、**不进转换队列**，因此既不算失败也不触发 WPS 轮次；开头日志加一行
+    「遇到 Excel：按选项跳过（.xls/.xlsx 不合并、不计失败）」。
+  - `core/report.py`：报告参数行加「遇到 Excel ：跳过/正常处理」，单列【跳过的 Excel】章节
+    （未启用时写明「（未启用该选项）」），合计行加「跳过 Excel N 个（未计入失败）」；
+    「只剩 Excel」的目标不再报「无素材」，改标「Excel 已按选项跳过」。
+- **界面/入口**：「转换选项」组新增复选 `cb_skip_excel`（文案「遇到 Excel（.xls/.xlsx）跳过：
+  不合并、不计失败」，带中文提示），设置项 `skip_excel` 记忆；状态栏与收尾日志在启用时追加
+  「跳过 Excel N 个」；`app/main.py` 自动化验收新增 `A4_AUTOMATION_SKIP_EXCEL=1` 与
+  JSON 结果字段 `skip_excel/skipped_excel/skipped_excel_rows`；`app/diagnostics.py` 的
+  config.json 同步输出该开关（便于远程报障时确认同事勾没勾）。
+- **结果对话框**：启用时第 4 个页签变为「跳过的 Excel（N）」（逐行：目标/文件名/完整路径，
+  双击定位），默认关闭时仍是原来四个页签、不凭空多一列；「无素材」原因改为按 Excel 跳过数量说明。
+- **测试（+9，共 92 用例）**：`test_core_units.py` 3 例（范围判定 / 保序分流 / 默认关闭）、
+  `test_modes.py` 2 例（`--skip-excel` 真跑：PDF 3 页照常合并 + 报告单列跳过清单 + 不出现「需要 WPS」；
+  默认不勾选时 Excel 仍计失败，行为不变）、`test_gui_smoke.py` 1 例（默认不勾 + 配置透传 + 设置记忆）、
+  `test_results_dialog.py` 3 例（页签/双击定位/默认不出现该页签/「N 个 Excel 已跳过」文案）。
+- **验证**：`pytest tests/` **91 passed + 1 failed**；唯一失败是既有的
+  `test_exe_embeds_app_icon_frames`（工作区新图标 vs v1.0.2 exe 旧图标，见维护记录 4 的遗留，非本次回归）。
+- **排查教训（测试隔离）**：新用例里调用 `_save_settings()` 会把窗口状态（含根目录）写进**同一会话
+  共享的隔离 INI**，导致后续 `test_gui_smoke::test_targets_uncheck_all`（该用例因 fixture
+  `blockSignals(True)` 依赖“setText 触发一次刷新”来更新状态栏）与
+  `test_results_dialog::test_end_to_end_real_run_summary` 失败。改为直接 `AppSettings().set/get`
+  验证持久化并复原，不再走 `_save_settings()`。——**新写 GUI 用例时不要把 `_save_settings()` 当断言手段**。
+- **文档同步**：README 功能特性新增「Excel 跳过选项」并在结果清单条目里注明第五列；
+  `docs/使用说明-给同事.md` 选项表新增「遇到 Excel 跳过」一行。
+- **遗留（待用户决定，未做）**：① 尚未重打包 → `dist/A4合并助手.exe` 仍是 v1.0.2，**没有**这个选项，
+  打包版冻结验收（`tests/test_frozen_exe.py`）里也没有该选项的用例；② 版本号仍 1.0.2.0，
+  未提 1.0.3、未发 Release；③ 与图标遗留互相牵制——若这次要发版，正好一并把新图标提交进 1.0.3。
+
 ## 下一步
 
 项目收官：milestone 全部完成（M0~M6），git tag：baseline-v0, m0~m6, v1.0.0, v1.0.1, v1.0.2。
 后续维护：新需求/缺陷按「改 → pytest tests/ 全绿 → 重打包 → 发新版」节奏走；
 报障收集用诊断包（诊断 zip 会自动带上版本号，能确认同事跑的是哪一版）。
+
+**当前待办（M7 收尾）**：代码与测试已完成（维护记录 5）。等你决定是否现在就重打包发 1.0.3——
+若发：提交新图标 + 提版本号 1.0.3 → 重打包 → 更新指纹/验收单 → 发 Release（打包版验收可顺带补
+「遇到 Excel 跳过」用例）；若暂不发：源码可用，`dist/` 里的 exe 仍是不含该选项的 1.0.2。

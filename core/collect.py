@@ -17,6 +17,21 @@ SUPPORTED_EXTS = IMAGE_EXTS | PDF_EXTS | WORD_EXTS | EXCEL_EXTS | PPT_EXTS | TEX
 
 REPORT_PREFIX = "合并报告"     # 报告文件前缀：收集阶段一律排除（防误扫）
 
+# 「遇到 Excel 跳过」选项针对的扩展名（仅 .xls/.xlsx；.xlsm/.csv/.et 不在此列）
+SKIP_EXCEL_EXTS = {".xls", ".xlsx"}
+
+
+def is_skippable_excel(path: Path) -> bool:
+    """是否为「遇到 Excel 跳过」要排除的 Excel 文件（只看扩展名）。"""
+    return path.suffix.lower() in SKIP_EXCEL_EXTS
+
+
+def partition_skipped_excel(files: list[Path]) -> tuple[list[Path], list[Path]]:
+    """按扩展名把素材分成（可合并的文件, 被跳过的 Excel），保持原有顺序。"""
+    kept = [f for f in files if not is_skippable_excel(f)]
+    skipped = [f for f in files if is_skippable_excel(f)]
+    return kept, skipped
+
 
 def wps_kind(ext: str) -> str | None:
     """把扩展名映射成转换处理方式（word/text/image/excel/ppt）。"""

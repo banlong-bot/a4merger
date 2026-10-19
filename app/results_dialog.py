@@ -30,6 +30,9 @@ NO_LOOKALIKE_HINT = "本次没有跳过「与所在文件夹同名」的 PDF。"
 LOOKALIKE_HINT = "这些文件默认被视为上次生成的成品而没有并入；如需并入，请勾选「同名成品」后重跑。"
 NO_IGNORED_HINT = "本次没有被忽略的文件（不支持的类型会被忽略，旧成品 PDF 会被跳过）。"
 IGNORED_HINT = "这些类型不在支持范围内，未参与合并。"
+SKIP_EXCEL_HINT = ("这些 Excel 文件按「遇到 Excel 跳过」选项被提前排除：不参与合并，"
+                   "也不计入失败清单。如需合并，请取消该选项后重跑。")
+NO_SKIP_EXCEL_HINT = "本次没有跳过任何 Excel 文件。"
 
 
 # ------------------------------------------------------------------ 工具函数
@@ -82,16 +85,26 @@ def _fmt_sec(sec: float) -> str:
     return f"{sec:.1f} 秒"
 
 
+def _empty_reason(r) -> str:
+    """「无素材」目标的原因文本（Excel 被选项跳过时要点明，避免用户以为漏扫）。"""
+    n = len(getattr(r, "skipped_excel", []) or [])
+    if n:
+        return f"（{n} 个 Excel 已跳过，无其它素材）"
+    return "（无素材，未生成）"
+
+
 def _counts(summary: RunSummary) -> dict:
     results = summary.results
     done = [r for r in results if r.done]
     failures = [(r, f) for r in results for f in r.failures]
     lookalikes = [(r, p) for r in results for p in r.lookalikes]
+    skipped_excel = [(r, p) for r in results for p in (r.skipped_excel or [])]
     ignored = [(r, p) for r in results for p in r.ignored]
     return {
         "done": done,
         "failures": failures,
         "lookalikes": lookalikes,
+        "skipped_excel": skipped_excel,
         "ignored": ignored,
         "failed_folders": [r for r in results if r.files_count and not r.done],
         "empty_folders": [r for r in results if not r.files_count],
@@ -108,14 +121,16 @@ def build_failures_text(summary: RunSummary) -> str:
         "=" * 60,
         f"应用版本：{__version__}    运行时间：{summary.started}",
         f"根目录　：{summary.config.root}",
-        f"失败文件：{len(c['failures'])} 个    未生成目标：{len(c['failed_folders'])} 个",
+        f"失败文件：{len(c['failures'])} 个    未生成目标：{len(c['failed_folders'])} 个"
+        + (f"    跳过 Excel：{len(c['skipped_excel'])} 个"
+           if summary.config.skip_excel else ""),
         "",
     ]
     index = 0
     for r in summary.results:
         if not r.failures and r.done:
             continue
-        head = f"【{r.label}】" + ("" if r.files_count else "（无素材，未生成）")
+        head = f"【{r.label}】" + ("" if r.files_count else _empty_reason(r))
         lines.append(head)
         for f in r.failures:
             index += 1
@@ -146,6 +161,7 @@ def build_summary_text(summary: RunSummary) -> str:
         f"根目录　：{cfg.root}",
         f"输出模式：{mode}" + (f" → {cfg.output_dir}" if cfg.output_dir else ""),
         f"文件名模板：{cfg.output_name}",
+        f"遇到 Excel：{'跳过（.xls/.xlsx 不合并、不计失败）' if cfg.skip_excel else '正常处理'}",
         f"结果　　：成功 {len(c['done'])}/{len(summary.results)} 个目标，共 {c['pages']} 页"
         + ("（预览模式，未生成文件）" if cfg.dry_run else ""),
         "",
@@ -180,6 +196,15 @@ def build_summary_text(summary: RunSummary) -> str:
     else:
         lines.append(f"  {NO_LOOKALIKE_HINT}")
     lines.append("")
+    lines.append("【跳过的 Excel（遇到 Excel 跳过）】")
+    if c["skipped_excel"]:
+        for r, p in c["skipped_excel"]:
+            lines.append(f"  · {r.label} → {p.name}")
+            lines.append(f"      路径：{p}")
+        lines.append(f"  {SKIP_EXCEL_HINT}")
+    else:
+        lines.append(f"  {NO_SKIP_EXCEL_HINT}")
+    lines.append("")
     lines.append("【忽略的文件类型】")
     if c["ignored"]:
         for r, p in c["ignored"]:
@@ -191,7 +216,7 @@ def build_summary_text(summary: RunSummary) -> str:
     if c["empty_folders"]:
         lines.append("【无素材（未生成）】")
         for r in c["empty_folders"]:
-            lines.append(f"  ○ {r.label}")
+            lines.append(f"  ○ {r.label}  {_empty_reason(r)}")
         lines.append("")
     return "\n".join(lines)
 
@@ -234,6 +259,7 @@ class ResultDialog(QDialog):
         self.summary = summary
         self.cfg = cfg or summary.config
         self.counts = _counts(summary)
+        self.tb_skipped_excel = None          # 仅在启用「遇到 Excel 跳过」时创建
         self.setWindowTitle("运行结果")
         self.resize(1120, 640)
         self._build_ui()
@@ -247,6 +273,7 @@ class ResultDialog(QDialog):
         head = ("预览完成（未生成文件）：" if cfg.dry_run else "处理完成：") + \
                f"成功 {len(c['done'])}/{len(self.summary.results)} 个目标，" + \
                f"共 {c['pages']} 页，失败 {len(c['failures'])} 个文件，" + \
+               (f"跳过 Excel {len(c['skipped_excel'])} 个，" if cfg.skip_excel else "") + \
                f"耗时 {_fmt_sec(self.summary.elapsed)}"
         self.lb_head = QLabel(head)
         self.lb_head.setStyleSheet("font-size:11pt;font-weight:bold;")
@@ -261,6 +288,10 @@ class ResultDialog(QDialog):
         self.tabs.addTab(self._tab_success(), f"成功（{len(c['done'])}）")
         self.tabs.addTab(self._tab_failures(), f"失败（{len(c['failures'])}）")
         self.tabs.addTab(self._tab_lookalikes(), f"跳过的成品（{len(c['lookalikes'])}）")
+        if cfg.skip_excel:
+            # 仅启用该选项时出现（默认界面保持四项不变）
+            self.tabs.addTab(self._tab_skipped_excel(),
+                             f"跳过的 Excel（{len(c['skipped_excel'])}）")
         self.tabs.addTab(self._tab_ignored(), f"忽略的类型（{len(c['ignored'])}）")
         lay.addWidget(self.tabs, 1)
 
@@ -367,6 +398,27 @@ class ResultDialog(QDialog):
                                 else NO_LOOKALIKE_HINT))
         return w
 
+    def _tab_skipped_excel(self) -> QWidget:
+        """「遇到 Excel 跳过」选项排除的 Excel 清单（不计入失败）。"""
+        w = QWidget()
+        v = QVBoxLayout(w)
+        self.tb_skipped_excel = _make_table(["目标文件夹", "被跳过的 Excel", "完整路径"],
+                                            stretch_col=2)
+        self.tb_skipped_excel.itemDoubleClicked.connect(
+            lambda item: reveal_in_explorer(self._skipped_excel_path(item.row())))
+        self._skipped_excel_rows: list[Path] = []
+        for r, p in self.counts["skipped_excel"]:
+            row = self.tb_skipped_excel.rowCount()
+            self.tb_skipped_excel.insertRow(row)
+            self.tb_skipped_excel.setItem(row, 0, _cell(r.label))
+            self.tb_skipped_excel.setItem(row, 1, _cell(p.name))
+            self.tb_skipped_excel.setItem(row, 2, _cell(str(p), f"双击定位：{p}"))
+            self._skipped_excel_rows.append(p)
+        v.addWidget(self.tb_skipped_excel, 1)
+        v.addWidget(_hint_label(SKIP_EXCEL_HINT if self.counts["skipped_excel"]
+                                else NO_SKIP_EXCEL_HINT))
+        return w
+
     def _tab_ignored(self) -> QWidget:
         w = QWidget()
         v = QVBoxLayout(w)
@@ -387,7 +439,7 @@ class ResultDialog(QDialog):
             row = self.tb_ignored.rowCount()
             self.tb_ignored.insertRow(row)
             self.tb_ignored.setItem(row, 0, _cell(r.label))
-            self.tb_ignored.setItem(row, 1, _cell("（无素材，未生成）"))
+            self.tb_ignored.setItem(row, 1, _cell(_empty_reason(r)))
             self.tb_ignored.setItem(row, 2, _cell(str(r.folder), f"双击定位：{r.folder}"))
         v.addWidget(self.tb_ignored, 1)
         v.addWidget(_hint_label(IGNORED_HINT if self.counts["ignored"]
@@ -405,6 +457,10 @@ class ResultDialog(QDialog):
 
     def _lookalike_path(self, row: int) -> Path | None:
         return self._lookalike_rows[row] if 0 <= row < len(self._lookalike_rows) else None
+
+    def _skipped_excel_path(self, row: int) -> Path | None:
+        rows = getattr(self, "_skipped_excel_rows", [])
+        return rows[row] if 0 <= row < len(rows) else None
 
     def _ignored_path(self, row: int) -> Path | None:
         return self._ignored_rows[row] if 0 <= row < len(self._ignored_rows) else None

@@ -24,6 +24,7 @@ class MergeConfig:
     orientation: str = "auto"               # auto/portrait/landscape
     image_fit: str = "page"                 # page/origin
     include_lookalikes: bool = False
+    skip_excel: bool = False               # 遇到 Excel（.xls/.xlsx）跳过：不合并、不计失败
     passwords: list[str] = field(default_factory=list)
     prompt: bool = True                     # 是否允许交互询问密码
     dry_run: bool = False
@@ -73,6 +74,7 @@ class FolderResult:
     failures: list[FileFailure] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     lookalikes: list[Path] = field(default_factory=list)
+    skipped_excel: list[Path] = field(default_factory=list)   # 按选项跳过的 Excel（不计失败）
     ignored: list[Path] = field(default_factory=list)
     replaced_output: bool = False
 

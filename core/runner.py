@@ -8,8 +8,8 @@ import time
 from pathlib import Path
 
 from core.collect import (PDF_EXTS, SUPPORTED_EXTS, collect_files, exclusion_dirs,
-                          iter_target_folders, level_text, plan_outputs,
-                          rel_target, target_display, wps_kind)
+                          iter_target_folders, level_text, partition_skipped_excel,
+                          plan_outputs, rel_target, target_display, wps_kind)
 from core.converters.base import ConvertTask
 from core.converters.backend_native import NativeConverter
 from core.converters.backend_wps import WpsConverter, run_wps_worker
@@ -90,6 +90,8 @@ def run(cfg: MergeConfig, on_log=None, on_progress=None,
 
     logger("info", f"根目录：{cfg.root}")
     logger("info", f"处理级别：{level_text(cfg.level)}")
+    if cfg.skip_excel:
+        logger("info", "遇到 Excel：按选项跳过（.xls/.xlsx 不合并、不计失败）")
     logger("info", f"待处理文件夹：{len(targets)} 个" +
            ("（预览模式，不会生成文件）" if cfg.dry_run else ""))
 
@@ -145,9 +147,16 @@ def _process_folder(folder: Path, out_path: Path, cfg: MergeConfig, tmp_root: Pa
         folder, skip_dirs, all_outputs, cfg.output_name,
         skip_lookalikes=not cfg.include_lookalikes)
     used = [f for f in files if f.suffix.lower() in SUPPORTED_EXTS]
+    if cfg.skip_excel:
+        # 「遇到 Excel 跳过」（默认关闭）：预检阶段先摘出去，不转换、不计失败
+        used, result.skipped_excel = partition_skipped_excel(used)
     result.lookalikes = lookalikes
     result.ignored = ignored
     result.files_count = len(used)
+    if result.skipped_excel:
+        names = "、".join(_fmt_path(folder, f) for f in result.skipped_excel)
+        logger("info", f"   （已按「遇到 Excel 跳过」跳过 {len(result.skipped_excel)} 个 Excel："
+                       f"{names}）")
     if not used:
         return result
 

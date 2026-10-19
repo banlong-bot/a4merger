@@ -358,3 +358,72 @@ def test_end_to_end_real_run_summary(qapp, tmp_path):
     assert "成功 2/2 个目标" in win.lb_state.text()
     win.deleteLater()
     qapp.processEvents()
+
+
+# ------------------------------------------------------------ 遇到 Excel 跳过
+
+@pytest.fixture()
+def scenario_skip_excel(tmp_path: Path):
+    """启用「遇到 Excel 跳过」后的结果：1 个正常目标 + 1 个只剩 Excel 的目标。"""
+    root = tmp_path / "资料"
+    (root / "张三").mkdir(parents=True)
+    out = make_pdf(root / "张三" / "【合并】张三.pdf", 2)
+    cfg = MergeConfig(root=root, report=False, skip_excel=True)
+    ok = FolderResult(folder=root / "张三", label="张三", out_path=out,
+                      files_count=2, pages=2, done=True,
+                      skipped_excel=[root / "张三" / "出资证明.xlsx"])
+    only_excel = FolderResult(folder=root / "王五", label="王五",
+                              out_path=root / "王五" / "【合并】王五.pdf",
+                              files_count=0, pages=0,
+                              skipped_excel=[root / "王五" / "明细.xls",
+                                             root / "王五" / "流水.xlsx"])
+    return RunSummary("2026-10-01 10:05:00", 3.0, {"wps": True, "native": True},
+                      cfg, [ok, only_excel], report_path=None)
+
+
+def test_dialog_skip_excel_tab(qapp, scenario_skip_excel, revealed):
+    """启用选项后多出「跳过的 Excel」页签：逐行列清单，双击可定位，不计失败。"""
+    dlg = ResultDialog(scenario_skip_excel, cfg=scenario_skip_excel.config)
+    assert dlg.tabs.count() == 5
+    assert dlg.tabs.tabText(3) == "跳过的 Excel（3）"
+    assert dlg.tb_skipped_excel.rowCount() == 3
+    assert dlg.tb_skipped_excel.item(0, 1).text() == "出资证明.xlsx"
+    assert dlg.tb_skipped_excel.item(1, 1).text() == "明细.xls"
+    assert dlg.tb_failures.rowCount() == 0                    # 跳过不计失败
+    assert "跳过 Excel 3 个" in dlg.lb_head.text()
+    dlg.tb_skipped_excel.itemDoubleClicked.emit(dlg.tb_skipped_excel.item(0, 1))
+    assert revealed and revealed[0].name == "出资证明.xlsx"
+
+    text = rd.build_summary_text(scenario_skip_excel)
+    assert "遇到 Excel：跳过" in text
+    assert "【跳过的 Excel（遇到 Excel 跳过）】" in text
+    assert "出资证明.xlsx" in text and "明细.xls" in text
+    assert rd.SKIP_EXCEL_HINT in text
+    dlg.deleteLater()
+
+
+def test_dialog_skip_excel_tab_absent_by_default(qapp, scenario):
+    """默认关闭时不新增页签（仍是四个页签），文本说明未启用该选项。"""
+    dlg = ResultDialog(scenario, cfg=scenario.config)
+    assert dlg.tabs.count() == 4
+    assert dlg.tb_skipped_excel is None
+    assert dlg.tabs.tabText(3) == "忽略的类型（1）"
+    text = rd.build_summary_text(scenario)
+    assert "遇到 Excel：正常处理" in text
+    assert rd.NO_SKIP_EXCEL_HINT in text
+    dlg.deleteLater()
+
+
+def test_empty_folder_reason_counts_skipped_excel(tmp_path):
+    """只剩 Excel 的目标：忽略页签原因写「N 个 Excel 已跳过」，导出文本同步。"""
+    root = tmp_path / "资料"
+    e = FolderResult(folder=root / "空", label="空",
+                     out_path=root / "空" / "【合并】空.pdf", files_count=0,
+                     skipped_excel=[root / "空" / "a.xlsx", root / "空" / "b.xlsx"])
+    assert rd._empty_reason(e) == "（2 个 Excel 已跳过，无其它素材）"
+    assert rd._empty_reason(FolderResult(folder=root / "空2", label="空2",
+                                        out_path=root / "空2" / "【合并】空2.pdf",
+                                        files_count=0)) == "（无素材，未生成）"
+    cfg = MergeConfig(root=root, skip_excel=True)
+    txt = rd.build_failures_text(RunSummary("t", 1.0, {}, cfg, [e]))
+    assert "2 个 Excel 已跳过" in txt

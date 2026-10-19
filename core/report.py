@@ -28,6 +28,8 @@ def write_report(path: Path, summary: RunSummary) -> Path:
                  + (f" → {cfg.output_dir}" if cfg.output_dir else ""))
     lines.append(f"处理级别    ：{level_text(cfg.level)}")
     lines.append(f"文件名模板  ：{cfg.output_name}")
+    lines.append(f"遇到 Excel  ：" + ("跳过（.xls/.xlsx 不合并、不计失败）"
+                                      if cfg.skip_excel else "正常处理"))
     lines.append(f"A4 方向     ：{cfg.orientation}　　留白：{cfg.margin_mm}mm")
     lines.append(f"图片适配    ：{cfg.image_fit}　　引擎：{cfg.engine}")
     lines.append(f"已载入密码  ：{len(cfg.passwords)} 个")
@@ -37,6 +39,8 @@ def write_report(path: Path, summary: RunSummary) -> Path:
     lines.append("【目标清单】")
     for r in summary.results:
         mark = "✔ 成功" if r.done else ("✘ 未生成" if r.files_count else "○ 无素材")
+        if not r.done and not r.files_count and r.skipped_excel:
+            mark = "○ 无素材（Excel 已按选项跳过）"
         extra = ""
         if r.out_path and r.done:
             size = f"{r.out_path.stat().st_size / 1024 / 1024:.1f} MB"
@@ -62,12 +66,24 @@ def write_report(path: Path, summary: RunSummary) -> Path:
     if skip_count == 0:
         lines.append("  （无）")
     lines.append("")
+    lines.append("【跳过的 Excel（按「遇到 Excel 跳过」选项）】")
+    excel_count = 0
+    for r in summary.results:
+        for p in r.skipped_excel:
+            excel_count += 1
+            lines.append(f"  · {r.label} → {p.name}")
+    if not cfg.skip_excel:
+        lines.append("  （未启用该选项）")
+    elif excel_count == 0:
+        lines.append("  （无）")
+    lines.append("")
     lines.append("【忽略的文件】")
     ign = sorted({f.name for r in summary.results for f in r.ignored})
     lines.append("  " + (("、".join(ign)) if ign else "（无）"))
     lines.append("")
     total_pages = sum(r.pages for r in summary.results)
     lines.append(f"合计：成功 {sum(1 for r in summary.results if r.done)} 个目标，"
-                 f"共 {total_pages} 页。")
+                 f"共 {total_pages} 页。"
+                 + (f"跳过 Excel {excel_count} 个（未计入失败）。" if excel_count else ""))
     path.write_text("\n".join(lines) + "\n", encoding="utf-8-sig")
     return path

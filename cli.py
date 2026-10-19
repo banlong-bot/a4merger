@@ -60,6 +60,9 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--include-lookalikes", action="store_true",
                    help="把「与所在文件夹同名的 PDF」也当作素材合并进去"
                         "（默认视为上次生成的成品而跳过）")
+    p.add_argument("--skip-excel", action="store_true",
+                   help="遇到 Excel 文件（.xls/.xlsx）跳过：不合并、也不计入失败清单"
+                        "（默认不跳过，会尝试用 WPS 转换）")
     p.add_argument("--password", action="append", default=[],
                    help="加密文件的打开密码，可以写多次，也可以用逗号分隔多个，"
                         "例如 --password 123456 --password abc,888888")
@@ -127,6 +130,7 @@ def main(argv=None) -> int:
         only=[x.strip() for x in args.only.split(",")] if args.only else None,
         margin_mm=args.margin_mm, orientation=args.orientation,
         image_fit=args.image_fit, include_lookalikes=args.include_lookalikes,
+        skip_excel=args.skip_excel,
         passwords=passwords, prompt=not args.no_prompt,
         dry_run=args.dry_run, wps_timeout=args.wps_timeout,
         engine=args.engine, report=not args.no_report,
@@ -221,6 +225,14 @@ def main(argv=None) -> int:
         log("  这些文件没有进入合并结果，其余文件正常合并。")
     else:
         log("\n所有文件都成功打开并合并。")
+
+    skipped_excel = [(r.label, f) for r in summary.results for f in r.skipped_excel]
+    if skipped_excel:
+        log(f"\n按「遇到 Excel 跳过」跳过 {len(skipped_excel)} 个 Excel 文件"
+            f"（不计入失败清单）：")
+        for label, f in skipped_excel:
+            log(f"  · {label} → {f.name}")
+        log("  如需把这些 Excel 也合并进去，去掉 --skip-excel 后重跑。")
 
     skipped_look = [(r.label, f.relative_to(r.folder))
                     for r in summary.results for f in r.lookalikes]

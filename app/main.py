@@ -221,6 +221,9 @@ def _schedule_automation(win, app) -> None:
         if summary is not None:
             result["targets"] = len(summary.results)
             result["pages"] = sum(r.pages for r in summary.results)
+            result["skip_excel"] = bool(getattr(summary.config, "skip_excel", False))
+            result["skipped_excel"] = [str(p) for r in summary.results
+                                       for p in (r.skipped_excel or [])]
             result["report_path"] = str(summary.report_path or "")
             result["outputs"] = [
                 {"label": r.label, "out": str(r.out_path), "pages": r.pages,
@@ -236,6 +239,8 @@ def _schedule_automation(win, app) -> None:
                 "success_rows": dlg.tb_success.rowCount(),
                 "failure_rows": dlg.tb_failures.rowCount(),
                 "lookalike_rows": dlg.tb_lookalikes.rowCount(),
+                "skipped_excel_rows": (dlg.tb_skipped_excel.rowCount()
+                                       if dlg.tb_skipped_excel is not None else 0),
                 "ignored_rows": dlg.tb_ignored.rowCount(),
                 "export_fail_enabled": dlg.btn_export_fail.isEnabled(),
                 "export_all_enabled": dlg.btn_export_all.isEnabled(),
@@ -294,6 +299,8 @@ def _schedule_automation(win, app) -> None:
             if ENGINE_MAP.get(win.cb_engine.currentText()) != engine:
                 win.cb_engine.setCurrentText(
                     next(k for k, v in ENGINE_MAP.items() if v == engine))
+        if os.environ.get("A4_AUTOMATION_SKIP_EXCEL") == "1":
+            win.cb_skip_excel.setChecked(True)       # 自动验收：勾选「遇到 Excel 跳过」
         win._set_targets_checked(True)
         state["dep_probe"] = probe_frozen_deps()
         state["imports"] = probe_engine_imports()

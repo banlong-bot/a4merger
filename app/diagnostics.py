@@ -253,6 +253,7 @@ def build_diagnostic_zip(out_zip: Path, cfg=None, log_file: Path | None = None,
                 "orientation": cfg.orientation,
                 "image_fit": cfg.image_fit,
                 "engine": cfg.engine,
+                "skip_excel": cfg.skip_excel,
                 "wps_timeout": cfg.wps_timeout,
                 "report": cfg.report,
                 "passwords": ["***" for _ in cfg.passwords],      # 脱敏

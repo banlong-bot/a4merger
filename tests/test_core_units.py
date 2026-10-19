@@ -5,7 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from core.collect import plan_outputs
+from core.collect import (is_skippable_excel, partition_skipped_excel,
+                          plan_outputs)
 from core.converters.backend_native import decode_text, font_path
 from core.types import MergeConfig
 from core.util import natural_key
@@ -66,3 +67,27 @@ def test_validate_unknown_placeholder():
 def test_validate_ok_default():
     cfg = MergeConfig(root=Path("."))
     assert cfg.validate() == []
+
+
+def test_skip_excel_scope():
+    """「遇到 Excel 跳过」只针对 .xls/.xlsx（大小写不敏感），其余 Excel 家族不在此列。"""
+    assert is_skippable_excel(Path("a.xls"))
+    assert is_skippable_excel(Path("a.XLSX"))
+    assert not is_skippable_excel(Path("a.xlsm"))
+    assert not is_skippable_excel(Path("a.csv"))
+    assert not is_skippable_excel(Path("a.et"))
+    assert not is_skippable_excel(Path("a.pdf"))
+
+
+def test_partition_skipped_excel_keeps_order():
+    """分组保序：可合并文件与 Excel 各自维持原顺序。"""
+    files = [Path("1.pdf"), Path("2.xlsx"), Path("3.jpg"),
+             Path("4.xls"), Path("5.pdf")]
+    kept, skipped = partition_skipped_excel(files)
+    assert [p.name for p in kept] == ["1.pdf", "3.jpg", "5.pdf"]
+    assert [p.name for p in skipped] == ["2.xlsx", "4.xls"]
+
+
+def test_skip_excel_default_off():
+    """默认不跳过（MergeConfig 默认值），保证与基线行为一致。"""
+    assert MergeConfig(root=Path(".")).skip_excel is False

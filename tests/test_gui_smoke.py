@@ -16,6 +16,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import QApplication
 
 from app.diagnostics import build_diagnostic_zip, setup_file_logging
+from app.settings import AppSettings
 from app.ui_main import MainWindow
 from core.types import MergeConfig
 
@@ -34,6 +35,24 @@ def win(qapp, tmp_path):
     w.lw_targets.blockSignals(True)
     yield w
     w.deleteLater()
+
+
+def test_skip_excel_option_default_off(win):
+    """新增「遇到 Excel 跳过」选项：默认不勾选；勾选后透传配置并被设置记忆。"""
+    assert not win.cb_skip_excel.isChecked()          # 默认保持原行为
+    win.ed_root.setText(str(SAMPLES / "pure_pdf"))
+    cfg = win._build_config()
+    assert cfg is not None and cfg.skip_excel is False
+    win.cb_skip_excel.setChecked(True)
+    cfg = win._build_config()
+    assert cfg.skip_excel is True
+    # 设置记忆：直接读写，避免 _save_settings() 把窗口状态写进同一会话的其它用例
+    s = AppSettings()
+    try:
+        s.set("skip_excel", True)
+        assert AppSettings().get_bool("skip_excel", False) is True
+    finally:
+        s.set("skip_excel", False)
 
 
 def test_window_controls(win):

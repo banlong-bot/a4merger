@@ -204,3 +204,52 @@ def test_dry_run_no_output(scratch: Path):
     assert p.returncode == 0
     assert "预览完成" in p.stdout
     assert not (root / "张三" / "【合并】张三.pdf").exists()
+
+
+# ---------------------------------------------------------------- Excel 跳过选项
+
+def _excel_root(scratch: Path) -> Path:
+    """构造「一个目标文件夹里既有 PDF 又有 Excel」的场景。"""
+    root = scratch / "excel"
+    sub = root / "张三"
+    sub.mkdir(parents=True)
+    shutil.copy(SAMPLES / "pure_pdf" / "张三" / "1.身份证" / "扫描1.pdf",
+                sub / "材料.pdf")
+    shutil.copy(SAMPLES / "mixed" / "股东甲" / "2.出资核查" / "出资证明.xlsx",
+                sub / "出资证明.xlsx")
+    return root
+
+
+def test_skip_excel_option(scratch: Path):
+    """--skip-excel：Excel 不转换、不计失败，PDF 正常合并，报告单列跳过清单。"""
+    root = _excel_root(scratch)
+    p = run_cli("-r", str(root), "--skip-excel", "--engine", "native",
+                "--output-name", "{folder}.pdf")
+    assert p.returncode == 0, p.stdout + p.stderr
+    out = root / "张三" / "张三.pdf"
+    assert out.exists()
+    assert len(page_signature(out)) == 3, "PDF 素材页数不对"
+    assert "已按「遇到 Excel 跳过」跳过 1 个 Excel" in p.stdout
+    assert "需要 WPS" not in p.stdout                  # 没有把 Excel 报成失败
+    assert "所有文件都成功打开并合并" in p.stdout
+    report = root / "合并报告.txt"
+    text = report.read_text(encoding="utf-8-sig")
+    assert "遇到 Excel  ：跳过" in text
+    assert "【跳过的 Excel（按「遇到 Excel 跳过」选项）】" in text
+    assert "出资证明.xlsx" in text
+    assert "跳过 Excel 1 个（未计入失败）。" in text
+
+
+def test_skip_excel_default_tries_wps(scratch: Path):
+    """默认（不勾选）：Excel 仍走转换流程；无 WPS 时计入失败清单，行为不变。"""
+    root = _excel_root(scratch)
+    p = run_cli("-r", str(root), "--engine", "native",
+                "--output-name", "{folder}.pdf")
+    assert p.returncode == 0, p.stdout + p.stderr
+    out = root / "张三" / "张三.pdf"
+    assert out.exists() and len(page_signature(out)) == 3
+    assert "需要 WPS" in p.stdout                      # 未启用选项：Excel 计失败
+    assert "没能成功打开/合并的文件共 1 个" in p.stdout
+    text = (root / "合并报告.txt").read_text(encoding="utf-8-sig")
+    assert "遇到 Excel  ：正常处理" in text
+    assert "（未启用该选项）" in text

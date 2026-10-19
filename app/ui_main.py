@@ -169,6 +169,13 @@ class MainWindow(QMainWindow):
 
         self.cb_lookalike = QCheckBox("把「与文件夹同名」的 PDF 也当作素材")
         f2.addRow("同名成品", self.cb_lookalike)
+
+        self.cb_skip_excel = QCheckBox("遇到 Excel（.xls/.xlsx）跳过：不合并、不计失败")
+        self.cb_skip_excel.setToolTip(
+            "默认不勾选：Excel 会尝试用 WPS 转换（未装 WPS 时会进入失败清单）。\n"
+            "勾选后：.xls/.xlsx 在预检阶段被跳过，不计入失败清单，\n"
+            "结果对话框与运行报告会单列「跳过的 Excel」清单。")
+        f2.addRow("Excel 处理", self.cb_skip_excel)
         lv.addWidget(gb_conv)
 
         # ---- 加密
@@ -287,6 +294,7 @@ class MainWindow(QMainWindow):
             list(ENGINE_MAP.values()).index(eng) if eng in ENGINE_MAP.values() else 0)
         self.sp_timeout.setValue(s.get_int("wps_timeout", 600))
         self.cb_lookalike.setChecked(s.get_bool("include_lookalikes", False))
+        self.cb_skip_excel.setChecked(s.get_bool("skip_excel", False))
         self.cb_no_prompt.setChecked(s.get_bool("no_prompt", False))
         self.cb_remember_pw.setChecked(s.get_bool("remember_pw", False))
         self.cb_dryrun.setChecked(s.get_bool("dry_run", False))
@@ -310,6 +318,7 @@ class MainWindow(QMainWindow):
         s.set("engine", ENGINE_MAP[self.cb_engine.currentText()])
         s.set("wps_timeout", self.sp_timeout.value())
         s.set("include_lookalikes", self.cb_lookalike.isChecked())
+        s.set("skip_excel", self.cb_skip_excel.isChecked())
         s.set("no_prompt", self.cb_no_prompt.isChecked())
         s.set("dry_run", self.cb_dryrun.isChecked())
         checked = self._checked_targets()
@@ -467,6 +476,7 @@ class MainWindow(QMainWindow):
             engine=ENGINE_MAP[self.cb_engine.currentText()],
             wps_timeout=self.sp_timeout.value(),
             include_lookalikes=self.cb_lookalike.isChecked(),
+            skip_excel=self.cb_skip_excel.isChecked(),
             passwords=pws,
             prompt=not self.cb_no_prompt.isChecked(),
             report=self.cb_report.isChecked(),
@@ -577,17 +587,20 @@ class MainWindow(QMainWindow):
         pages = sum(r.pages for r in summary.results)
         fails = [(r.label, f) for r in summary.results for f in r.failures]
         skipped = sum(len(r.lookalikes) for r in summary.results)
+        excel = sum(len(r.skipped_excel or []) for r in summary.results)
         prefix = "预览完成" if summary.config.dry_run else "处理完成"
         self._append_log(
             "info",
             f"{prefix}：成功 {ok}/{total} 个目标，共 {pages} 页，"
             f"失败 {len(fails)} 个文件，跳过成品 {skipped} 个，"
-            f"耗时 {summary.elapsed:.1f} 秒。"
+            + (f"跳过 Excel {excel} 个，" if summary.config.skip_excel else "")
+            + f"耗时 {summary.elapsed:.1f} 秒。"
             + (f"报告：{summary.report_path}" if summary.report_path else ""))
         tone = "error" if fails else ("warn" if skipped or not ok else "ok")
         self._set_state(
             f"{prefix}：成功 {ok}/{total} 个目标，共 {pages} 页"
-            + (f"，失败 {len(fails)} 个" if fails else ""), tone)
+            + (f"，失败 {len(fails)} 个" if fails else "")
+            + (f"，跳过 Excel {excel} 个" if summary.config.skip_excel else ""), tone)
         self._show_result_dialog(summary)
         self.worker = None
 

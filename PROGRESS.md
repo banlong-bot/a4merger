@@ -369,9 +369,22 @@ Worker 完善：取消时终止 WPS 子进程（core 已支持 cancel 回调）�
   验证持久化并复原，不再走 `_save_settings()`。——**新写 GUI 用例时不要把 `_save_settings()` 当断言手段**。
 - **文档同步**：README 功能特性新增「Excel 跳过选项」并在结果清单条目里注明第五列；
   `docs/使用说明-给同事.md` 选项表新增「遇到 Excel 跳过」一行。
-- **遗留（待用户决定，未做）**：① 尚未重打包 → `dist/A4合并助手.exe` 仍是 v1.0.2，**没有**这个选项，
-  打包版冻结验收（`tests/test_frozen_exe.py`）里也没有该选项的用例；② 版本号仍 1.0.2.0，
-  未提 1.0.3、未发 Release；③ 与图标遗留互相牵制——若这次要发版，正好一并把新图标提交进 1.0.3。
+- **重打包（按用户决定：只出 exe，不发版）**：`python -m PyInstaller --noconfirm --clean
+  --distpath dist --workpath build\pyi_work build\a4merger.spec` → `dist/A4合并助手.exe`
+  **78,488,574 字节**，SHA256 `08DC1A95…A40822`，文件版本仍是 **1.0.2.0**（未提版本号），
+  构建日志含 `Copying icon to EXE` / `Copying version information to EXE` / `Embedding manifest in EXE`；
+  构建时间戳已由 spec 的 try/finally 还原（`git status` 仅剩两个图标文件，已核对）。
+- **验收**：`pytest tests/test_frozen_exe.py` **11 passed**（直接驱动新 exe）；全量 `pytest tests/`
+  **92 passed**（129.6s）。——本次重打包顺带把工作区未提交的**新图标**嵌进了 exe，因此
+  `test_exe_embeds_app_icon_frames` **恢复通过**（图标字节与工作区 `assets/app.ico` 一致）。
+- **重要提醒（版本号相同但内容不同）**：新 exe 与 GitHub Release v1.0.2 的 exe **字节不同却同为 1.0.2.0**
+  （旧 78,636,788 / `AB50ADAA…E8D23` vs 新 78,488,574 / `08DC1A95…A40822`），差异来自 M7 代码 +
+  新图标。**未打 tag、未推 GitHub main、未发 Release**（用户决定）。日后要发版必须先提版本号到 1.0.3，
+  否则同事无法凭版本号区分两个 exe。
+- **未提交**：`assets/app-icon.jpg`、`assets/app.ico`（新图标，用户此前决定先不动；本次打包已用上但未入库）。
+- **遗留（待用户决定）**：① 是否发 v1.0.3（提版本号 + 提交图标 + 重打包 + 更新验收单指纹 + tag + Release）；
+  ② 打包版冻结验收里还没有「遇到 Excel 跳过」的自动化用例，发版时应补一例（自动化环境变量
+  `A4_AUTOMATION_SKIP_EXCEL=1`、结果字段 `skipped_excel_rows` 已就绪）。
 
 ## 下一步
 
@@ -379,6 +392,7 @@ Worker 完善：取消时终止 WPS 子进程（core 已支持 cancel 回调）�
 后续维护：新需求/缺陷按「改 → pytest tests/ 全绿 → 重打包 → 发新版」节奏走；
 报障收集用诊断包（诊断 zip 会自动带上版本号，能确认同事跑的是哪一版）。
 
-**当前待办（M7 收尾）**：代码与测试已完成（维护记录 5）。等你决定是否现在就重打包发 1.0.3——
-若发：提交新图标 + 提版本号 1.0.3 → 重打包 → 更新指纹/验收单 → 发 Release（打包版验收可顺带补
-「遇到 Excel 跳过」用例）；若暂不发：源码可用，`dist/` 里的 exe 仍是不含该选项的 1.0.2。
+**当前待办（M7 收尾）**：代码 + 测试 + 本地 exe 已完成（维护记录 5），`git commit ac61e56`，
+**未推送、未打 tag、未发 Release**。等你决定是否发 v1.0.3——若发：提交新图标 + 提版本号 1.0.3
+（`build/make_version_info.py` 与 `core/__init__.py`、冻结验收断言、README/说明、验收单指纹）→
+补打包版「遇到 Excel 跳过」验收用例 → 重打包 → tag → Release → 推送 main。

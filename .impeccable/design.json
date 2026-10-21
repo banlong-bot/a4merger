@@ -1,0 +1,233 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-21T10:35:18+08:00",
+  "title": "Design System: A4 合并助手",
+  "extensions": {
+    "colorMeta": {
+      "surface": {
+        "role": "neutral",
+        "displayName": "纸白",
+        "canonical": "#ffffff",
+        "tonalRamp": ["#e6e6e6", "#ececec", "#f2f2f2", "#f7f7f7", "#fafafa", "#fcfcfc", "#fefefe", "#ffffff"]
+      },
+      "surface-subtle": {
+        "role": "neutral",
+        "displayName": "抽屉衬底",
+        "canonical": "#f7f8fa",
+        "tonalRamp": ["#d3d6da", "#dde0e4", "#e7eaee", "#eff1f4", "#f7f8fa", "#fafbfc", "#fcfdfe", "#ffffff"]
+      },
+      "border": {
+        "role": "neutral",
+        "displayName": "发丝线",
+        "canonical": "#d9dde3",
+        "tonalRamp": ["#9aa2ab", "#acb3bb", "#bec4ca", "#cbd0d6", "#d9dde3", "#e4e7ec", "#eef0f3", "#f9fafb"]
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "主墨",
+        "canonical": "#333333",
+        "tonalRamp": ["#0d0d0d", "#1a1a1a", "#262626", "#333333", "#5c5c5c", "#8a8a8a", "#b8b8b8", "#ebebeb"]
+      },
+      "ink-muted": {
+        "role": "neutral",
+        "displayName": "次墨",
+        "canonical": "#555555",
+        "tonalRamp": ["#141414", "#232323", "#333333", "#555555", "#7a7a7a", "#a0a0a0", "#c6c6c6", "#efefef"]
+      },
+      "accent": {
+        "role": "primary",
+        "displayName": "系统任务蓝",
+        "canonical": "#1565c0",
+        "tonalRamp": ["#062a52", "#0c3f74", "#125296", "#1565c0", "#4a8ad0", "#83b0e0", "#b9d3ee", "#e8f1fb"]
+      },
+      "accent-deep": {
+        "role": "primary",
+        "displayName": "系统任务蓝·深",
+        "canonical": "#0d47a1",
+        "tonalRamp": ["#052345", "#083566", "#0a3f80", "#0d47a1", "#3f6fb8", "#7899d0", "#b1c5e5", "#e6edf8"]
+      },
+      "ok": {
+        "role": "tertiary",
+        "displayName": "成功绿",
+        "canonical": "#1e7d32",
+        "tonalRamp": ["#0a2e12", "#114a1e", "#16652b", "#1e7d32", "#4fa35f", "#85c08f", "#bcdcc1", "#eef7f0"]
+      },
+      "warn": {
+        "role": "tertiary",
+        "displayName": "警告琥珀",
+        "canonical": "#b26a00",
+        "tonalRamp": ["#3d2400", "#5e3800", "#8a5100", "#b26a00", "#d09042", "#e4b378", "#f2d5ae", "#fdf5ea"]
+      },
+      "error": {
+        "role": "secondary",
+        "displayName": "错误红",
+        "canonical": "#c62828",
+        "tonalRamp": ["#4a0f0f", "#6d1717", "#962020", "#c62828", "#dc5f5f", "#e99a9a", "#f3c5c5", "#fdeeee"]
+      },
+      "error-bg": {
+        "role": "secondary",
+        "displayName": "校验红底",
+        "canonical": "#fdecea",
+        "tonalRamp": ["#e8b6b3", "#eec5c2", "#f4d3d0", "#f8dedb", "#fdecea", "#fef2f0", "#fef8f7", "#ffffff"]
+      },
+      "error-border": {
+        "role": "secondary",
+        "displayName": "校验红",
+        "canonical": "#c0392b",
+        "tonalRamp": ["#45140e", "#662016", "#922e21", "#c0392b", "#d76a5c", "#e49b91", "#f1c5bf", "#fbebe8"]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "仅结果对话框的总结标题（11pt/700）。"
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "分组框标题、对话框标题、状态栏关键段（9pt/600）。"
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "表单标签、按钮、表格正文、对话框文案（9pt/400）。"
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "提示行、说明句、次墨辅助文字（9pt/400）。"
+      },
+      "mono": {
+        "displayName": "Mono",
+        "purpose": "日志区、完整路径、文件大小、耗时（Consolas 9pt）。"
+      }
+    },
+    "shadows": [],
+    "motion": [],
+    "breakpoints": [
+      {
+        "name": "desktop-min",
+        "value": "900px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "主操作按钮（开始合并）",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Qt QPushButton[role=primary]；每个窗口唯一主操作，最小高度 40px，回车触发。以下样式为 QSS（本项目为 Qt Widgets，非 HTML）。",
+      "html": "<div class=\"ds-btn-primary\">开始合并</div>",
+      "css": ".ds-btn-primary { background: #1565c0; color: #ffffff; border: none; border-radius: 4px; padding: 8px 20px; min-height: 40px; font-family: 'Microsoft YaHei UI', 'Segoe UI', sans-serif; font-size: 9pt; font-weight: 600; } .ds-btn-primary:hover { background: #0d47a1; } .ds-btn-primary:focus-visible { outline: 2px solid #1565c0; outline-offset: 1px; } .ds-btn-primary:disabled { background: #d9dde3; color: #555555; }"
+    },
+    {
+      "name": "次级按钮（浏览 / 取消 / 导出…）",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "白底 + 发丝线描边，高度 28px；不与主操作抢视觉重量。QSS 目标选择器 QPushButton[role=secondary]。",
+      "html": "<div class=\"ds-btn-secondary\">浏览…</div>",
+      "css": ".ds-btn-secondary { background: #ffffff; color: #333333; border: 1px solid #d9dde3; border-radius: 4px; padding: 6px 14px; min-height: 28px; font-family: 'Microsoft YaHei UI', 'Segoe UI', sans-serif; font-size: 9pt; } .ds-btn-secondary:hover { background: #f7f8fa; border-color: #c0c6ce; } .ds-btn-secondary:focus-visible { outline: 2px solid #1565c0; outline-offset: 1px; } .ds-btn-secondary:disabled { color: #555555; background: #f7f8fa; }"
+    },
+    {
+      "name": "输入框",
+      "kind": "input",
+      "refersTo": "input-field",
+      "description": "QLineEdit / QComboBox / QSpinBox 统一外观；非法输入用校验红描边 + 浅红底，不弹窗。",
+      "html": "<div class=\"ds-input\">请输入根目录路径…</div>",
+      "css": ".ds-input { background: #ffffff; color: #333333; border: 1px solid #d9dde3; border-radius: 4px; padding: 4px 8px; min-height: 28px; font-family: 'Microsoft YaHei UI', 'Segoe UI', sans-serif; font-size: 9pt; } .ds-input::placeholder { color: #555555; } .ds-input:focus { border-color: #1565c0; outline: none; } .ds-input.is-error { border-color: #c0392b; background: #fdecea; }"
+    },
+    {
+      "name": "分组框（卡片容器）",
+      "kind": "card",
+      "refersTo": "group-card",
+      "description": "QGroupBox：白底、1px 发丝线、6px 圆角、12px 内边距；标题只写名词短语。",
+      "html": "<div class=\"ds-card\"><div class=\"ds-card-title\">基本设置</div></div>",
+      "css": ".ds-card { background: #ffffff; border: 1px solid #d9dde3; border-radius: 6px; padding: 12px; font-family: 'Microsoft YaHei UI', 'Segoe UI', sans-serif; font-size: 9pt; color: #333333; } .ds-card-title { font-weight: 600; color: #333333; margin-bottom: 8px; }"
+    },
+    {
+      "name": "结果表格",
+      "kind": "card",
+      "refersTo": "data-table",
+      "description": "QTableWidget：无竖向网格线、隔行衬底、1px 表头下边线、整行选择、双击定位；产品标志性交互。",
+      "html": "<table class=\"ds-table\"><thead><tr><th>目标文件夹</th><th>页数</th><th>文件大小</th><th>输出路径</th></tr></thead><tbody><tr><td>张三</td><td>3</td><td>1.2 MB</td><td>D:/out/【合并】张三.pdf</td></tr><tr><td>李四</td><td>2</td><td>0.8 MB</td><td>D:/out/【合并】李四.pdf</td></tr></tbody></table>",
+      "css": ".ds-table { width: 100%; border-collapse: collapse; background: #ffffff; color: #333333; font-family: 'Microsoft YaHei UI', 'Segoe UI', sans-serif; font-size: 9pt; } .ds-table th { text-align: left; font-weight: 600; color: #555555; padding: 6px 8px; border-bottom: 1px solid #d9dde3; } .ds-table td { padding: 6px 8px; border: none; } .ds-table tbody tr:nth-child(even) { background: #f7f8fa; } .ds-table tbody tr:hover { background: #eef4fb; }"
+    },
+    {
+      "name": "结果页签",
+      "kind": "nav",
+      "refersTo": "tab",
+      "description": "QTabWidget：无边框页签，选中项 2px 任务蓝下划线；标签带计数（「成功（3）」）。",
+      "html": "<div class=\"ds-tabs\"><span class=\"ds-tab is-active\">成功（3）</span><span class=\"ds-tab\">失败（2）</span><span class=\"ds-tab\">跳过的成品（1）</span><span class=\"ds-tab\">忽略的类型（0）</span></div>",
+      "css": ".ds-tabs { display: flex; gap: 4px; border-bottom: 1px solid #d9dde3; font-family: 'Microsoft YaHei UI', 'Segoe UI', sans-serif; font-size: 9pt; } .ds-tab { padding: 6px 14px; color: #555555; border-bottom: 2px solid transparent; cursor: pointer; } .ds-tab:hover { color: #333333; background: #f7f8fa; } .ds-tab.is-active { color: #333333; border-bottom-color: #1565c0; font-weight: 600; }"
+    },
+    {
+      "name": "日志区",
+      "kind": "custom",
+      "refersTo": "log-pane",
+      "description": "QPlainTextEdit 只读：Consolas 9pt、按级别着色（info 主墨 / ok 绿 / warn 琥珀 / error 红）、最多 5000 块自动截断并滚动到底。",
+      "html": "<pre class=\"ds-log\"><span class=\"ds-log-ok\">✔ 已生成 【合并】张三.pdf（3 页）</span>\n<span class=\"ds-log-error\">✘ 失败：报告.pdf（加密）</span></pre>",
+      "css": ".ds-log { background: #f7f8fa; border: 1px solid #d9dde3; border-radius: 4px; padding: 8px; margin: 0; font-family: Consolas, 'Microsoft YaHei', monospace; font-size: 9pt; line-height: 1.4; color: #333333; overflow: auto; } .ds-log-ok { color: #1e7d32; } .ds-log-warn { color: #b26a00; } .ds-log-error { color: #c62828; }"
+    },
+    {
+      "name": "状态栏",
+      "kind": "custom",
+      "refersTo": "tab",
+      "description": "QStatusBar 四段：引擎探测 / 长路径状态 / 任务状态（占满中部、按状态着色）/ 版本号（常驻右侧）。",
+      "html": "<div class=\"ds-statusbar\"><span>引擎：WPS + 纯 Python</span><span>长路径：已启用</span><span class=\"ds-status-ok\">成功 2/2</span><span class=\"ds-status-version\">v1.0.2</span></div>",
+      "css": ".ds-statusbar { display: flex; gap: 16px; align-items: center; padding: 4px 8px; border-top: 1px solid #d9dde3; background: #f7f8fa; font-family: 'Microsoft YaHei UI', 'Segoe UI', sans-serif; font-size: 9pt; color: #555555; } .ds-status-ok { color: #1e7d32; } .ds-status-version { margin-left: auto; color: #555555; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "安心档案柜",
+    "overview": "界面是一排安静的档案抽屉：每一项任务都有明确的位置、明确的当前状态、明确的归属。工具本身不表演，它让人一眼确认「哪一册成了、哪一册缺页、缺的是哪一页」，然后放心离开。视觉上极简——白底、发丝线、一层极浅的中性底色，加上极少量、含义固定的状态色。\n\n结构性克制来自场景：使用者是非技术同事，机器在内网、可能没有 WPS、可能不认识任何设计术语。因此这里没有自绘控件、没有图标字体、没有动效表演；层次只靠间距、字重与 1px 描边建立，键盘操作、高 DPI、系统主题、辅助技术全部交给 Qt 原生实现。",
+    "keyCharacteristics": [
+      "极简浅色：白底 + 一层 #f7f8fa 中性衬底 + #d9dde3 发丝线；无渐变、无阴影。",
+      "语义色固定：蓝＝进行中/主操作，绿＝成功，琥珀＝警告，红＝错误；面积永远小于屏幕的 10%。",
+      "结构原生：Qt Widgets 默认行为（菜单栏、状态栏、分栏、表格、页签），不自绘。",
+      "中文优先：所有文案短句、动词开头；数字与路径用等宽字体承载。",
+      "结果优先：过程信息在日志区（次要），结果用表格与页签（主要）。"
+    ],
+    "rules": [
+      {
+        "name": "The 语义独占五色规则",
+        "body": "颜色只表达状态，不表达装饰。全界面只允许五个语义色（蓝/绿/琥珀/红/中性墨），任何新增颜色必须先证明它属于其中之一，否则用中性灰。",
+        "section": "colors"
+      },
+      {
+        "name": "The 面积十分之一规则",
+        "body": "单屏内彩色面积不超过 10%；大面积永远交给白与浅灰，颜色只落在文字、描边与小图标上。",
+        "section": "colors"
+      },
+      {
+        "name": "The 等宽只读规则",
+        "body": "等宽字体只用于「要逐字符核对」的内容（日志、路径、数字），不用于标题或按钮。",
+        "section": "typography"
+      },
+      {
+        "name": "The 一屏一动作规则",
+        "body": "每个窗口只有一个主操作：主窗口是「开始合并」，结果对话框是「关闭」。其余动作一律次级按钮或菜单项，不得与主按钮抢视觉重量。",
+        "section": "elevation"
+      },
+      {
+        "name": "The 发丝线规则",
+        "body": "需要区分两个区域时，先加 1px 线，再考虑加底色；永远不通过阴影制造层次。",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do 全中文：按钮动词开头（「开始合并」「打开输出目录」「导出失败清单 TXT…」），错误句先讲原因再讲下一步。",
+      "Do 用表格 + 页签承载结果，用计数标签（成功（3））让人不点开就知道规模。",
+      "Do 让状态色语义固定：绿=成功、琥珀=警告/跳过、红=错误、蓝=进行中；跨窗口不得改含义。",
+      "Do 用 1px 发丝线与 8px 网格拉开层次，保持扁平。",
+      "Do 保留 Qt 原生的键盘导航、菜单栏、状态栏、高 DPI 缩放与系统主题跟随能力。",
+      "Do 数字、路径、体积、耗时用等宽字体，保证可核对。",
+      "Do 主操作按钮常驻位置固定、高度 40px、回车可触发。"
+    ],
+    "donts": [
+      "Don't 自绘无边框窗口、自绘按钮、引入图标字体或外部图片作为 UI 资源（图标仅限 exe/窗口图标一个 .ico）。",
+      "Don't 用阴影、渐变、模糊、动画过渡制造「高级感」——极简靠留白与秩序，不靠特效。",
+      "Don't 大面积铺状态色（整行红底、整块蓝底），颜色只做小面积强调。",
+      "Don't 增加第二个强调色或第二套色板；需要区分时用中性灰层次。",
+      "Don't 把关键操作做成只有图标的按钮，或藏进右键菜单。",
+      "Don't 改动结果对话框的四个默认页签顺序（成功 → 失败 → 跳过的成品 → 忽略的类型），可选页签（如「跳过的 Excel」）只能插在「跳过」类页签之间且仅在被启用时出现。",
+      "Don't 用弹窗替代可解释的失败信息：失败优先落进清单与日志，弹窗只用于无法继续的阻断性错误。"
+    ]
+  }
+}

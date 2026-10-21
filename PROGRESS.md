@@ -405,6 +405,32 @@ Worker 完善：取消时终止 WPS 子进程（core 已支持 cancel 回调）�
 - **下一步**：若要记录现有 Qt 界面体系 → `/impeccable document` 生成 DESIGN.md；
   若要评审主窗口 → `/impeccable critique app/ui_main.py`。
 
+## 维护记录 7（impeccable document：设计体系入库，2026-10-21）
+
+- **缘由**：用户在同一天要求 `impeccable document`——把现有界面的视觉体系固化成 `DESIGN.md`，
+  供后续新界面/改造保持同源。前置：`PRODUCT.md`（维护记录 6）已存在。
+- **扫描结果（现状事实）**：项目**没有 QSS 文件**，视觉由 Qt/Windows 原生控件决定；
+  全工程仅 8 处内联样式：日志区 `Consolas/Microsoft YaHei 9pt`、结果对话框标题 `11pt/700`、
+  提示与根目录行 `#555555`、模板校验 `#c0392b/#fdecea`、状态与日志着色
+  `#333333/#1565c0/#1e7d32/#b26a00/#c62828`。窗口 1080×720（可记忆几何）、
+  结果对话框 1120×640、左右分栏 2:3、主按钮最小高 40px、日志上限 5000 块。
+- **访谈确认（用户答复）**：① 北极星＝**「安心档案柜」**；② 视觉基调＝**轻量统一皮肤（浅色）**、
+  **极简风**（用户原话「走极简风，」）；③ 密度与手感未单独选，按极简方向取「紧凑原生」为默认。
+- **产物**：
+  - `DESIGN.md`（仓库根，DESIGN.md 规范格式）：YAML frontmatter（12 色 + 5 字体角色 + 圆角/间距 + 8 组件）
+    + 八节正文（Overview/Colors/Typography/Layout/Elevation/Shapes/Components/Do's and Don'ts），
+    含 5 条 Named Rules（语义独占五色、面积十分之一、等宽只读、一屏一动作、发丝线）。
+  - `.impeccable/design.json`（sidecar，schemaVersion 2）：12 色的 8 级 tonalRamp、typographyMeta、
+    shadows/motion 为空（扁平无动效）、breakpoint desktop-min 900px、8 个 Qt 组件的 QSS 片段与结构、
+    narrative（北极星/概述/关键特征/规则/Do/Don't）。
+- **诚实标注（重要）**：文件开头已写明——**结构已落地（v1.0.2 现网），语义色 8 处已落地，
+  统一浅色 QSS 皮肤是本次确认的方向、尚未实现**；每条颜色/圆角 token 都标注了「已落地」或「方向」，
+  不做"已完成"的假记录。
+- **未做**：没有改任何界面代码（document 只记录不实施），故 `pytest tests/` 无需重跑（基线仍 92 例）；
+  没有新增 DESIGN.md 相关测试。
+- **下一步**：若要把「极简浅色皮肤」真正落地 → 新建 `app/theme.py` + `app/theme.qss`，
+  按 DESIGN.md 的 token 做 QSS，并补截图对比回归（该项属于代码改动，需单独确认后再做）。
+
 ## 下一步
 
 项目收官：milestone 全部完成（M0~M6），git tag：baseline-v0, m0~m6, v1.0.0, v1.0.1, v1.0.2。

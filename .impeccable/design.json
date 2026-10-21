@@ -46,6 +46,12 @@
         "canonical": "#0d47a1",
         "tonalRamp": ["#052345", "#083566", "#0a3f80", "#0d47a1", "#3f6fb8", "#7899d0", "#b1c5e5", "#e6edf8"]
       },
+      "accent-soft": {
+        "role": "primary",
+        "displayName": "浅任务蓝",
+        "canonical": "#eef4fb",
+        "tonalRamp": ["#d6e4f5", "#dfeaf7", "#e6effa", "#ecf3fb", "#eef4fb", "#f3f8fd", "#f8fbff", "#ffffff"]
+      },
       "ok": {
         "role": "tertiary",
         "displayName": "成功绿",
@@ -113,7 +119,7 @@
       "name": "主操作按钮（开始合并）",
       "kind": "button",
       "refersTo": "button-primary",
-      "description": "Qt QPushButton[role=primary]；每个窗口唯一主操作，最小高度 40px，回车触发。以下样式为 QSS（本项目为 Qt Widgets，非 HTML）。",
+      "description": "Qt QPushButton#primaryButton（objectName=primaryButton）；每个窗口唯一主操作，最小高度 40px，回车触发。以下样式为 QSS（本项目为 Qt Widgets，非 HTML），落地文件 app/theme.qss。",
       "html": "<div class=\"ds-btn-primary\">开始合并</div>",
       "css": ".ds-btn-primary { background: #1565c0; color: #ffffff; border: none; border-radius: 4px; padding: 8px 20px; min-height: 40px; font-family: 'Microsoft YaHei UI', 'Segoe UI', sans-serif; font-size: 9pt; font-weight: 600; } .ds-btn-primary:hover { background: #0d47a1; } .ds-btn-primary:focus-visible { outline: 2px solid #1565c0; outline-offset: 1px; } .ds-btn-primary:disabled { background: #d9dde3; color: #555555; }"
     },
@@ -121,7 +127,7 @@
       "name": "次级按钮（浏览 / 取消 / 导出…）",
       "kind": "button",
       "refersTo": "button-secondary",
-      "description": "白底 + 发丝线描边，高度 28px；不与主操作抢视觉重量。QSS 目标选择器 QPushButton[role=secondary]。",
+      "description": "白底 + 发丝线描边，高度 28px；不与主操作抢视觉重量。落地选择器：默认 QPushButton（主操作用 objectName=primaryButton 单独覆盖）。",
       "html": "<div class=\"ds-btn-secondary\">浏览…</div>",
       "css": ".ds-btn-secondary { background: #ffffff; color: #333333; border: 1px solid #d9dde3; border-radius: 4px; padding: 6px 14px; min-height: 28px; font-family: 'Microsoft YaHei UI', 'Segoe UI', sans-serif; font-size: 9pt; } .ds-btn-secondary:hover { background: #f7f8fa; border-color: #c0c6ce; } .ds-btn-secondary:focus-visible { outline: 2px solid #1565c0; outline-offset: 1px; } .ds-btn-secondary:disabled { color: #555555; background: #f7f8fa; }"
     },

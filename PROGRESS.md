@@ -431,6 +431,63 @@ Worker 完善：取消时终止 WPS 子进程（core 已支持 cancel 回调）�
 - **下一步**：若要把「极简浅色皮肤」真正落地 → 新建 `app/theme.py` + `app/theme.qss`，
   按 DESIGN.md 的 token 做 QSS，并补截图对比回归（该项属于代码改动，需单独确认后再做）。
 
+## 维护记录 8（M8：极简浅色皮肤 + 主窗口信息架构落地，2026-10-21）
+
+- **缘由**：`/impeccable shape` 规划后用户确认「**确认，开始实施**」——把 DESIGN.md 里记为「方向」的
+  极简浅色皮肤真正实现，同时按 shape 简报重排主窗口信息架构。验收口径（用户选定）：
+  **改版前后截图对比 + 现有 92 例 pytest 全绿**。
+- **用户拍板的三项取舍**：① 高级选项（排版/转换/加密三组）默认**折叠**，展开状态记忆；
+  ② 空状态（未选根目录）在动作条**只留一行引导字**，目标列表不塞提示；③ 「试运行」留在**主按钮区**。
+  范围上用户允许大改信息架构（不只是换色）。
+- **皮肤实现（唯一实现处）**：
+  - 新增 `app/theme.py`：`TOKENS`（13 色 + 圆角/间距，与 DESIGN.md frontmatter 一一对应）、
+    `color()`（未知名字回退主墨，不抛异常）、`load_qss()`（`$token` 占位符替换，长名优先避免前缀误替换）、
+    `apply()`（挂到 QApplication，重复调用无副作用）。
+  - 新增 `app/theme.qss`：只用 DESIGN.md 的 13 色（M8 追加 `accent-soft #eef4fb` 作悬停衬底）；
+    无阴影/渐变/动效；发丝线一律 1px；含 `QPushButton#primaryButton`（任务蓝底、40px、hover `#0d47a1`）、
+    `QLabel#expectLabel`、`QLabel#inlineError`、`QFrame#actionBar`、`QProgressBar`、`QScrollBar`、
+    `QTabBar`、分组框 6px 圆角等。
+  - 截图复核后修掉的三个视觉缺陷（都在 QSS 层）：① 下拉框被 QSS 化后箭头消失 → 去掉
+    `QComboBox::drop-down` 覆盖，箭头交回 Qt 原生绘制；② 目标列表的勾选框变成“只有勾没方框”
+    → 显式写 `QListWidget::indicator`（勾选＝实心任务蓝方块）；③ 滚动条是默认粗条 →
+    细轨 + 无箭头 + 悬停浅蓝。
+  - 进度条改为「标题行写文字、细轨道画进度」：空闲 8px、运行中 18px，文字进
+    `lb_prog_folder` / `lb_prog_page`（原来压在蓝条上，深色字看不清）。
+  - 顺带修掉 `_append_log` 里的历史占位 bug：日志超限时 `self.txt_log.blockCountChanged.emit`
+    是空操作，真正的 `_trim_log()` 从未执行（长跑会无限增长）。
+  - `MainWindow.__init__` 调 `theme.apply()`；`_set_state` / `_append_log` 原来写死的 5 个
+    十六进制色改为 `theme.color(...)`。**界面代码里不再散落十六进制色值。**
+- **信息架构重排（`app/ui_main.py`）**：
+  - 顶部：应用名 + 一句话用途（「把一组文件夹各自合成一册 A4 PDF」）。
+  - 左栏放进 `QScrollArea`（`self.scroll_left`）：基本设置 → 目标文件夹（带「已选 N/M · 将生成 M 册」
+    状态行）→ 可折叠高级选项（`btn_advanced` / `adv_panel`，`advanced_expanded` 记忆）。
+  - **动作条常驻窗口底部**（`QFrame#actionBar`，跨满整宽）：左侧「将把 N 个文件夹各自合成一册 A4 PDF」
+    预告行 + 行内错误，右侧 试运行 / 取消 / 开始合并。修掉了改版前「1080×720 下主按钮被左栏滚动裁掉」的问题。
+  - 进度条空闲显示「—」（原来像空白输入框）；分栏比例 3:4。
+  - **行内提示替代模态弹窗**：模板非法、根目录无效、未勾选、模式B 缺输出目录、配置校验失败
+    一律写进 `lb_inline_error`（红字，`_set_inline_error`），不再 `QMessageBox.warning` 打断；
+    根目录为空时目标状态行留空（不再显示误导性的「已选 0/0」）。
+- **测试**：
+  - 新增 `tests/test_ui_theme.py`（13 例）：QSS 已挂载且含关键 token、`apply()` 幂等、token 与 DESIGN.md 一致、
+    QSS 文件随源码存在、初始折叠态、折叠切换不改默认值、左栏滚动区存在且最小高度 ≤760、
+    预告行随勾选/试运行变化、模板非法→行内红字且**不弹模态**、根目录失效→行内提示、
+    `advanced_expanded` 设置记忆（用 `AppSettings` 直接读写并在 finally 复原，避免污染同会话）、
+    进度文案随进度进标题行、日志超限真截断（防历史占位 bug 回归）。
+  - 更新 `tests/test_gui_smoke.py` 两例以匹配新文案与行内提示语义（不再 monkeypatch 弹窗）。
+  - 测试隔离教训：新用例的窗口 fixture 需先清掉会话共享 INI 里的 `root` / `checked_targets`
+    再构造窗口，否则前一个用例保存的表单会让「默认态」断言失败（本次实测踩到）。
+- **截图（验收证据）**：新增 `tools/capture_ui.py`（默认 Windows 原生平台渲染，`A4_SHOT_OFFSCREEN=1`
+  可退化为 offscreen；offscreen 下加载仓库自带 Noto 中文字体，避免截图全是方块）。
+  产物 `docs/shots/main-before-{empty,filled}.png` 与 `docs/shots/main-after-{empty,filled,advanced}.png`。
+  注意：原生平台在解释器退出期偶发 `0xC0000409`（与打包版同类），工具末尾改为截图落盘后 `os._exit(0)`。
+- **打包**：`build/a4merger.spec` 的 `datas` 增加 `(app/theme.qss, "app")`，否则打包版读不到 QSS。
+  exe 已重建：`dist/A4合并助手.exe` **78,495,490 字节**，SHA256 `F1CFF13BE4A351BCBE356E10CAC1CF0AA1EFF416B832E9838064EAF04F05FAA7`。
+- **验证**：`pytest tests/` 全量 **105 passed**（92 既有 + 13 新增 `tests/test_ui_theme.py`）；
+  `pytest tests/test_frozen_exe.py` 对**重建后的 exe** **11 passed**（含新增断言「界面皮肤：已加载」，
+  确保 `app/theme.qss` 真的随打包进去）；`docs/shots/main-before-*.png` 与 `main-after-*.png` 可对照。
+- **未做**：没有发版（版本号仍 1.0.2）、没有 push——沿用维护记录 5 的节奏，等你决定是否出 1.0.3
+  （届时要把 78,497,916 字节这个本地 exe 与 Release 里同版本号但字节不同的旧 exe 区分开）。
+
 ## 下一步
 
 项目收官：milestone 全部完成（M0~M6），git tag：baseline-v0, m0~m6, v1.0.0, v1.0.1, v1.0.2。

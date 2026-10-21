@@ -44,6 +44,7 @@ try:
         binaries=[],
         datas=[
             (str(REPO / "fonts" / "NotoSansCJKsc-Regular.otf"), "fonts"),
+            (str(REPO / "app" / "theme.qss"), "app"),      # 主窗口皮肤 QSS（app/theme.py 运行期读取）
             (str(ICON_FILE), "assets"),
         ],
         hiddenimports=[

@@ -1,0 +1,324 @@
+/* app/theme.qss —— 极简浅色皮肤（token 见 app/theme.py 与 DESIGN.md）
+ * 规则：只用 DESIGN.md 的 12 色；无阴影/渐变/动效；发丝线一律 1px。
+ * $token 占位符由 app/theme.py:load_qss() 替换。
+ */
+
+/* ---------------------------------------------------------------- 基础 */
+QWidget {
+    color: $ink;
+    font-family: "Microsoft YaHei UI", "Microsoft YaHei", "Segoe UI", sans-serif;
+    font-size: 9pt;
+}
+QMainWindow, QDialog, #central {
+    background: $surface-subtle;
+}
+QLabel#appTitle {
+    font-size: 11pt;
+    font-weight: 700;
+    color: $ink;
+}
+QLabel#appSubtitle {
+    color: $ink-muted;
+}
+QLabel#sectionLabel {
+    color: $ink-muted;
+    font-weight: 600;
+}
+QLabel#targetStatus {
+    color: $ink-muted;
+}
+QLabel#expectLabel {
+    color: $ink;
+    font-weight: 600;
+}
+QLabel#inlineError {
+    color: $error;
+    background: $error-bg;
+    border: 1px solid $error-border;
+    border-radius: $radius-sm;
+    padding: 6px 8px;
+}
+
+/* ---------------------------------------------------------------- 分组卡片 */
+QGroupBox {
+    background: $surface;
+    border: 1px solid $border;
+    border-radius: $radius-md;
+    margin-top: 12px;
+    padding: 12px 12px 10px 12px;
+    font-weight: 600;
+}
+QGroupBox::title {
+    subcontrol-origin: margin;
+    left: 12px;
+    padding: 0 4px;
+    color: $ink-muted;
+    background: $surface;
+}
+
+/* ---------------------------------------------------------------- 输入控件 */
+QLineEdit, QComboBox, QSpinBox, QDoubleSpinBox, QPlainTextEdit, QListWidget {
+    background: $surface;
+    border: 1px solid $border;
+    border-radius: $radius-sm;
+    padding: 4px 8px;
+    selection-background-color: $accent;
+    selection-color: $surface;
+}
+QLineEdit:focus, QComboBox:focus, QSpinBox:focus,
+QDoubleSpinBox:focus, QPlainTextEdit:focus, QListWidget:focus {
+    border: 1px solid $accent;
+}
+QLineEdit:disabled, QComboBox:disabled, QSpinBox:disabled,
+QDoubleSpinBox:disabled, QPlainTextEdit:disabled {
+    background: $surface-subtle;
+    color: $ink-muted;
+}
+/* 下拉框只改外框与内边距，箭头交给 Qt 原生样式绘制（自绘箭头需要额外图片资源，不值得） */
+QComboBox {
+    padding-right: 20px;
+}
+QComboBox QAbstractItemView {
+    background: $surface;
+    border: 1px solid $border;
+    outline: none;
+    selection-background-color: $accent;
+    selection-color: $surface;
+}
+QListWidget::item {
+    padding: 3px 4px;
+    border-radius: 3px;
+}
+QListWidget::item:selected {
+    background: $surface-subtle;
+    color: $ink;
+}
+
+/* ---------------------------------------------------------------- 按钮 */
+QPushButton {
+    background: $surface;
+    color: $ink;
+    border: 1px solid $border;
+    border-radius: $radius-sm;
+    padding: 6px 14px;
+    min-height: 22px;
+}
+QPushButton:hover {
+    border-color: $accent;
+}
+QPushButton:pressed {
+    background: $surface-subtle;
+}
+QPushButton:disabled {
+    background: $surface-subtle;
+    color: $ink-muted;
+}
+QPushButton#primaryButton {
+    background: $accent;
+    color: $surface;
+    border: 1px solid $accent;
+    font-size: 10pt;
+    font-weight: 600;
+    padding: 8px 20px;
+}
+QPushButton#primaryButton:hover {
+    background: $accent-deep;
+    border-color: $accent-deep;
+}
+QPushButton#primaryButton:pressed {
+    background: $accent-deep;
+    border-color: $accent-deep;
+}
+QPushButton#primaryButton:disabled {
+    background: $border;
+    border-color: $border;
+    color: $ink-muted;
+}
+QToolButton#advancedToggle {
+    background: transparent;
+    border: none;
+    color: $accent;
+    font-weight: 600;
+    padding: 4px 2px;
+}
+QToolButton#advancedToggle:hover {
+    color: $accent-deep;
+}
+QToolButton#advancedToggle:checked {
+    color: $accent-deep;
+}
+
+/* ---------------------------------------------------------------- 选择控件 */
+QCheckBox, QRadioButton {
+    spacing: 6px;
+    color: $ink;
+}
+/* 目标列表里的勾选框：默认样式在 QSS 化之后会画不出方框，这里显式给形状（勾选=实心任务蓝） */
+QListWidget::indicator {
+    width: 14px;
+    height: 14px;
+    border: 1px solid $border;
+    border-radius: 3px;
+    background: $surface;
+}
+QListWidget::indicator:hover {
+    border-color: $accent;
+}
+QListWidget::indicator:checked {
+    background: $accent;
+    border: 1px solid $accent;
+}
+
+/* ---------------------------------------------------------------- 进度与日志 */
+QProgressBar {
+    background: $surface-subtle;
+    border: 1px solid $border;
+    border-radius: 3px;
+    text-align: center;
+    color: $ink-muted;
+    min-height: 6px;
+    max-height: 18px;
+}
+QProgressBar::chunk {
+    background: $accent;
+    border-radius: 2px;
+}
+QPlainTextEdit#logView {
+    font-family: Consolas, "Microsoft YaHei", monospace;
+    background: $surface;
+    border: 1px solid $border;
+    border-radius: $radius-sm;
+    padding: 6px;
+}
+
+/* ---------------------------------------------------------------- 滚动与分隔 */
+QScrollArea {
+    background: transparent;
+    border: none;
+}
+QScrollArea > QWidget > QWidget {
+    background: transparent;
+}
+QSplitter::handle {
+    background: transparent;
+}
+
+/* 滚动条：细、无箭头、悬停才显蓝（保持“发丝线”质感） */
+QScrollBar:vertical {
+    background: transparent;
+    width: 10px;
+    margin: 2px 0;
+}
+QScrollBar::handle:vertical {
+    background: $border;
+    border-radius: 5px;
+    min-height: 28px;
+}
+QScrollBar::handle:vertical:hover {
+    background: $accent-soft;
+}
+QScrollBar:horizontal {
+    background: transparent;
+    height: 10px;
+    margin: 0 2px;
+}
+QScrollBar::handle:horizontal {
+    background: $border;
+    border-radius: 5px;
+    min-width: 28px;
+}
+QScrollBar::handle:horizontal:hover {
+    background: $accent-soft;
+}
+QScrollBar::add-line, QScrollBar::sub-line {
+    width: 0;
+    height: 0;
+}
+QScrollBar::add-page, QScrollBar::sub-page {
+    background: transparent;
+}
+
+/* ---------------------------------------------------------------- 动作区 */
+QFrame#actionBar {
+    background: $surface;
+    border: 1px solid $border;
+    border-radius: $radius-md;
+}
+
+/* ---------------------------------------------------------------- 菜单 / 状态栏 / 提示 */
+QMenuBar {
+    background: $surface-subtle;
+    border-bottom: 1px solid $border;
+    color: $ink;
+}
+QMenuBar::item {
+    background: transparent;
+    padding: 4px 10px;
+    border-radius: 3px;
+}
+QMenuBar::item:selected {
+    background: $surface;
+}
+QMenu {
+    background: $surface;
+    border: 1px solid $border;
+    padding: 4px;
+}
+QMenu::item {
+    padding: 5px 20px;
+    border-radius: 3px;
+}
+QMenu::item:selected {
+    background: $surface-subtle;
+    color: $ink;
+}
+QStatusBar {
+    background: $surface;
+    border-top: 1px solid $border;
+    color: $ink-muted;
+}
+QStatusBar QLabel {
+    color: $ink-muted;
+    padding: 0 6px;
+}
+QToolTip {
+    background: $ink;
+    color: $surface;
+    border: none;
+    padding: 4px 6px;
+}
+
+/* ---------------------------------------------------------------- 结果对话框（表格 / 页签） */
+QTableWidget {
+    background: $surface;
+    border: 1px solid $border;
+    gridline-color: $border;
+    selection-background-color: $surface-subtle;
+    selection-color: $ink;
+}
+QHeaderView::section {
+    background: $surface-subtle;
+    color: $ink-muted;
+    border: none;
+    border-bottom: 1px solid $border;
+    padding: 4px 6px;
+    font-weight: 600;
+}
+QTabWidget::pane {
+    border: 1px solid $border;
+    background: $surface;
+}
+QTabBar::tab {
+    background: $surface-subtle;
+    color: $ink-muted;
+    border: 1px solid $border;
+    border-bottom: none;
+    padding: 6px 12px;
+    margin-right: 2px;
+    border-top-left-radius: $radius-sm;
+    border-top-right-radius: $radius-sm;
+}
+QTabBar::tab:selected {
+    background: $surface;
+    color: $ink;
+}

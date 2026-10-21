@@ -238,6 +238,7 @@ def test_frozen_smoke_and_startup_hints():
     text = latest_log()
     assert "长路径" in text or "260" in text
     assert "引擎探测" in text and "WPS" in text
+    assert "界面皮肤：已加载" in text          # M8：theme.qss 必须真的进了打包（datas）
 
 
 def test_frozen_no_pip_guard(workdir):

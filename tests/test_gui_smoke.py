@@ -92,7 +92,8 @@ def test_targets_refresh(win):
     assert names == ["张三", "李四"]
     for i in range(win.lw_targets.count()):
         assert win.lw_targets.item(i).checkState() == Qt.Checked
-    assert win.lb_target_status.text() == "已选 2/2"
+    assert win.lb_target_status.text() == "已选 2/2 · 将生成 2 册"
+    assert "2 个文件夹" in win.lb_expect.text()
 
 
 def test_level0_current_folder(win):
@@ -114,16 +115,18 @@ def test_level0_current_folder(win):
 
 
 def test_targets_uncheck_all(win, monkeypatch):
-    """全不选 → 状态更新；开始构建配置被拦截并弹提示（modal 需 monkeypatch）。"""
+    """全不选 → 状态更新；开始被拦截时只用行内提示，不弹模态对话框（主窗口皮肤 M8）。"""
     warned: list[str] = []
     monkeypatch.setattr("app.ui_main.QMessageBox.warning",
                         lambda *a, **k: warned.append(a[2] if len(a) > 2 else ""))
     root = SAMPLES / "pure_pdf"
     win.ed_root.setText(str(root))
     win._set_targets_checked(False)
-    assert win.lb_target_status.text() == "已选 0/2"
+    assert win.lb_target_status.text() == "已选 0/2 · 请勾选文件夹"
     assert win._build_config() is None        # 无勾选 → 拒绝启动
-    assert any("至少勾选" in m for m in warned)
+    assert warned == []                        # 不再弹模态框
+    assert not win.lb_inline_error.isHidden()
+    assert "至少勾选" in win.lb_inline_error.text()
 
 
 def test_diagnostic_zip(tmp_path):

@@ -12,12 +12,14 @@ from pathlib import Path
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (QCheckBox, QComboBox, QDoubleSpinBox, QFileDialog,
-                               QFormLayout, QGroupBox, QHBoxLayout, QInputDialog,
-                               QLabel, QLineEdit, QListWidget, QListWidgetItem,
-                               QMainWindow, QMenuBar, QMessageBox, QPlainTextEdit,
-                               QProgressBar, QPushButton, QRadioButton, QScrollArea,
-                               QSpinBox, QSplitter, QVBoxLayout, QWidget)
+                               QFormLayout, QFrame, QGroupBox, QHBoxLayout,
+                               QInputDialog, QLabel, QLineEdit, QListWidget,
+                               QListWidgetItem, QMainWindow, QMenuBar, QMessageBox,
+                               QPlainTextEdit, QProgressBar, QPushButton,
+                               QRadioButton, QScrollArea, QSpinBox, QSplitter,
+                               QToolButton, QVBoxLayout, QWidget)
 
+from app import theme
 from app.diagnostics import build_diagnostic_zip, current_log_file, engine_probe
 from app.icon import app_icon
 from app.results_dialog import ResultDialog
@@ -48,6 +50,7 @@ def _level_index(level: int) -> int:
 class MainWindow(QMainWindow):
     def __init__(self, settings: AppSettings | None = None) -> None:
         super().__init__()
+        theme.apply()                            # 极简浅色皮肤（DESIGN.md；唯一实现处 app/theme.py）
         self.settings = settings or AppSettings()
         self.setWindowTitle(f"A4 合并助手 v{__version__}")
         self.setWindowIcon(app_icon())        # 标题栏/任务栏图标（与 exe 图标同源，见 app/icon.py）
@@ -64,22 +67,58 @@ class MainWindow(QMainWindow):
         self._sync_mode_ui()                 # 初始状态同步（build 时 setChecked 早于信号连接）
         self._load_settings()
         self._apply_template_validation()
+        self._log_theme_state()
         self.settings.restore_window(self)
 
     # ================================================================ UI 构建
 
-    def _build_ui(self) -> None:
-        central = QWidget()
-        splitter = QSplitter(Qt.Horizontal)
+    def _log_theme_state(self) -> None:
+        """启动日志记录皮肤是否真的加载（打包漏 datas 时能立刻看出来，不静默退化）。"""
+        css = theme.load_qss()
+        if css:
+            self._append_log("info", f"界面皮肤：已加载（theme.qss，{len(css)} 字符）")
+        else:
+            self._append_log("warn", "界面皮肤文件缺失：使用系统默认样式（不影响合并功能）")
 
-        # ------------------------------------------------ 左侧：参数面板
+    def _build_ui(self) -> None:
+        """构建主界面：顶部一句话用途 + 左（基本设置 / 目标 / 动作 / 高级折叠）+ 右（进度 / 日志）。
+
+        信息分层依据 docs/shape-主窗口极简浅色皮肤.md：
+        首次使用者看顶部与动作区，熟练用户只碰基本设置与目标列表，低频项收进高级选项。
+        """
+        self._template_error_active = False
+
+        central = QWidget()
+        central.setObjectName("central")
+        outer = QVBoxLayout(central)
+        outer.setContentsMargins(16, 12, 16, 8)
+        outer.setSpacing(10)
+
+        # ------------------------------------------------ 顶部：名称 + 一句话用途
+        head = QHBoxLayout()
+        head.setSpacing(12)
+        lb_title = QLabel("A4 合并助手")
+        lb_title.setObjectName("appTitle")
+        lb_sub = QLabel("把一组文件夹各自合成一册 A4 PDF")
+        lb_sub.setObjectName("appSubtitle")
+        head.addWidget(lb_title)
+        head.addWidget(lb_sub, 0, Qt.AlignBottom)
+        head.addStretch(1)
+        outer.addLayout(head)
+
+        splitter = QSplitter(Qt.Horizontal)
+        splitter.setChildrenCollapsible(False)
+
+        # ------------------------------------------------ 左侧：设置 + 目标 + 动作 + 高级
         left = QWidget()
         lv = QVBoxLayout(left)
-        lv.setContentsMargins(6, 6, 6, 6)
+        lv.setContentsMargins(0, 0, 8, 0)
+        lv.setSpacing(10)
 
-        # ---- 基本
+        # ---- 基本设置（每次都必须看到的项）
         gb_base = QGroupBox("基本设置")
         f = QFormLayout(gb_base)
+        f.setLabelAlignment(Qt.AlignRight | Qt.AlignVCenter)
         self.ed_root = QLineEdit(self)
         self.ed_root.setPlaceholderText("请选择要合并的根目录…")
         btn_root = QPushButton("浏览…")
@@ -90,23 +129,9 @@ class MainWindow(QMainWindow):
         rh.addWidget(btn_root)
         f.addRow("根目录", row_root)
 
-        self.lw_targets = QListWidget(self)
-        self.lw_targets.setSelectionMode(QListWidget.NoSelection)
-        self.lw_targets.setMaximumHeight(180)
-        trow = QWidget()
-        th = QVBoxLayout(trow)
-        th.setContentsMargins(0, 0, 0, 0)
-        th.addWidget(self.lw_targets)
-        hb = QHBoxLayout()
-        self.btn_all = QPushButton("全选")
-        self.btn_none = QPushButton("全不选")
-        self.lb_target_status = QLabel("")
-        hb.addWidget(self.btn_all)
-        hb.addWidget(self.btn_none)
-        hb.addStretch(1)
-        hb.addWidget(self.lb_target_status)
-        th.addLayout(hb)
-        f.addRow("目标文件夹", trow)
+        self.cb_level = QComboBox()
+        self.cb_level.addItems(LEVEL_MAP.keys())
+        f.addRow("处理级别", self.cb_level)
 
         self.ra_mode_a = QRadioButton("生成到各子文件夹内（模式A）")
         self.ra_mode_b = QRadioButton("统一输出到指定文件夹（模式B）")
@@ -128,10 +153,6 @@ class MainWindow(QMainWindow):
         oh.addWidget(btn_outdir)
         f.addRow("输出目录", orow)
 
-        self.cb_level = QComboBox()
-        self.cb_level.addItems(LEVEL_MAP.keys())
-        f.addRow("处理级别", self.cb_level)
-
         self.ed_template = QLineEdit("【合并】{folder}.pdf")
         f.addRow("文件名模板", self.ed_template)
 
@@ -140,9 +161,79 @@ class MainWindow(QMainWindow):
         f.addRow("运行报告", self.cb_report)
         lv.addWidget(gb_base)
 
+        # ---- 目标文件夹（状态行直接说「将生成几册」）
+        gb_targets = QGroupBox("目标文件夹")
+        tv = QVBoxLayout(gb_targets)
+        self.lw_targets = QListWidget(self)
+        self.lw_targets.setSelectionMode(QListWidget.NoSelection)
+        self.lw_targets.setMinimumHeight(110)
+        tv.addWidget(self.lw_targets, 1)
+        hb = QHBoxLayout()
+        self.btn_all = QPushButton("全选")
+        self.btn_none = QPushButton("全不选")
+        self.lb_target_status = QLabel("")
+        self.lb_target_status.setObjectName("targetStatus")
+        hb.addWidget(self.btn_all)
+        hb.addWidget(self.btn_none)
+        hb.addStretch(1)
+        hb.addWidget(self.lb_target_status)
+        tv.addLayout(hb)
+        lv.addWidget(gb_targets, 1)
+
+        # ---- 主按钮区（固定在窗口底部；整屏唯一实心按钮，点之前知道会发生什么）
+        action = QFrame()
+        action.setObjectName("actionBar")
+        av = QHBoxLayout(action)
+        av.setContentsMargins(14, 10, 14, 10)
+        av.setSpacing(10)
+        tcol = QVBoxLayout()
+        tcol.setSpacing(4)
+        self.lb_expect = QLabel("")
+        self.lb_expect.setObjectName("expectLabel")
+        self.lb_expect.setWordWrap(True)
+        tcol.addWidget(self.lb_expect)
+        self.lb_inline_error = QLabel("")
+        self.lb_inline_error.setObjectName("inlineError")
+        self.lb_inline_error.setWordWrap(True)
+        self.lb_inline_error.setVisible(False)
+        tcol.addWidget(self.lb_inline_error)
+        av.addLayout(tcol, 1)
+        self.btn_start = QPushButton("开始合并")
+        self.btn_start.setObjectName("primaryButton")
+        self.btn_start.setMinimumHeight(40)
+        self.btn_start.setMinimumWidth(180)
+        self.btn_start.setDefault(True)
+        self.btn_cancel = QPushButton("取消")
+        self.btn_cancel.setEnabled(False)
+        self.cb_dryrun = QCheckBox("试运行（只看清单，不生成文件）")
+        av.addWidget(self.cb_dryrun)
+        av.addWidget(self.btn_cancel)
+        av.addWidget(self.btn_start)
+
+        # ---- 高级选项（可折叠，默认收起，状态记忆）：排版 / 转换 / 加密
+        advrow = QHBoxLayout()
+        self.btn_advanced = QToolButton()
+        self.btn_advanced.setObjectName("advancedToggle")
+        self.btn_advanced.setText("高级选项：排版 / 转换 / 加密")
+        self.btn_advanced.setCheckable(True)
+        self.btn_advanced.setChecked(False)
+        self.btn_advanced.setArrowType(Qt.RightArrow)
+        self.btn_advanced.setToolButtonStyle(Qt.ToolButtonTextBesideIcon)
+        self.btn_advanced.setCursor(Qt.PointingHandCursor)
+        advrow.addWidget(self.btn_advanced)
+        advrow.addStretch(1)
+        lv.addLayout(advrow)
+
+        self.adv_panel = QWidget()
+        self.adv_panel.setObjectName("advPanel")
+        pv = QVBoxLayout(self.adv_panel)
+        pv.setContentsMargins(0, 0, 0, 0)
+        pv.setSpacing(10)
+
         # ---- 排版与转换
         gb_conv = QGroupBox("排版与转换")
         f2 = QFormLayout(gb_conv)
+        f2.setLabelAlignment(Qt.AlignRight | Qt.AlignVCenter)
         self.sp_margin = QDoubleSpinBox()
         self.sp_margin.setRange(0, 100)
         self.sp_margin.setDecimals(1)
@@ -176,11 +267,12 @@ class MainWindow(QMainWindow):
             "勾选后：.xls/.xlsx 在预检阶段被跳过，不计入失败清单，\n"
             "结果对话框与运行报告会单列「跳过的 Excel」清单。")
         f2.addRow("Excel 处理", self.cb_skip_excel)
-        lv.addWidget(gb_conv)
+        pv.addWidget(gb_conv)
 
-        # ---- 加密
+        # ---- 加密文件
         gb_enc = QGroupBox("加密文件")
         f3 = QFormLayout(gb_enc)
+        f3.setLabelAlignment(Qt.AlignRight | Qt.AlignVCenter)
         self.pt_passwords = QPlainTextEdit()
         self.pt_passwords.setPlaceholderText("每行一个密码（可用逗号分隔多个）")
         self.pt_passwords.setMaximumHeight(80)
@@ -191,45 +283,55 @@ class MainWindow(QMainWindow):
         f3.addRow("", self.cb_no_prompt)
         self.cb_remember_pw = QCheckBox("记住密码（Windows 本机加密保存，DPAPI）")
         f3.addRow("", self.cb_remember_pw)
-        lv.addWidget(gb_enc)
-        lv.addStretch(1)
+        pv.addWidget(gb_enc)
 
-        # ------------------------------------------------ 右侧：执行面板
+        self.adv_panel.setVisible(False)
+        lv.addWidget(self.adv_panel)
+
+        scroll = QScrollArea()
+        self.scroll_left = scroll
+        scroll.setWidgetResizable(True)
+        scroll.setFrameShape(QFrame.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAlwaysOff)
+        scroll.setWidget(left)
+
+        # ------------------------------------------------ 右侧：进度 + 日志
         right = QWidget()
         rv = QVBoxLayout(right)
-        rv.setContentsMargins(8, 8, 8, 8)
+        rv.setContentsMargins(8, 0, 0, 0)
+        rv.setSpacing(6)
 
-        runrow = QHBoxLayout()
-        self.btn_start = QPushButton("开始合并")
-        self.btn_start.setMinimumHeight(40)
-        self.btn_start.setDefault(True)
-        self.btn_cancel = QPushButton("取消")
-        self.btn_cancel.setEnabled(False)
-        self.cb_dryrun = QCheckBox("仅预览（不生成）")
-        runrow.addWidget(self.btn_start, 1)
-        runrow.addWidget(self.btn_cancel)
-        runrow.addWidget(self.cb_dryrun)
-        rv.addLayout(runrow)
-
+        self.lb_prog_folder = QLabel("文件夹进度")
+        self.lb_prog_folder.setObjectName("sectionLabel")
         self.pb_folder = QProgressBar()
+        self.lb_prog_page = QLabel("页面进度")
+        self.lb_prog_page.setObjectName("sectionLabel")
         self.pb_page = QProgressBar()
-        rv.addWidget(QLabel("文件夹进度"))
+        for pb in (self.pb_folder, self.pb_page):     # 空闲时只留一条细轨道，进度文字由上方小标题承载
+            pb.setRange(0, 1)
+            pb.setValue(0)
+            pb.setTextVisible(False)
+            pb.setFixedHeight(8)
+        rv.addWidget(self.lb_prog_folder)
         rv.addWidget(self.pb_folder)
-        rv.addWidget(QLabel("页面进度"))
+        rv.addWidget(self.lb_prog_page)
         rv.addWidget(self.pb_page)
 
+        lb_log = QLabel("运行日志")
+        lb_log.setObjectName("sectionLabel")
+        rv.addWidget(lb_log)
         self.txt_log = QPlainTextEdit()
+        self.txt_log.setObjectName("logView")
         self.txt_log.setReadOnly(True)
         self.txt_log.setMaximumBlockCount(LOG_MAX_BLOCKS + LOG_TRIM_AMOUNT * 2)
-        self.txt_log.setStyleSheet("QPlainTextEdit{font-family:Consolas,'Microsoft YaHei';font-size:9pt;}")
         rv.addWidget(self.txt_log, 1)
 
-        splitter.addWidget(left)
+        splitter.addWidget(scroll)
         splitter.addWidget(right)
-        splitter.setStretchFactor(0, 2)
-        splitter.setStretchFactor(1, 3)
-        lay = QHBoxLayout(central)
-        lay.addWidget(splitter)
+        splitter.setStretchFactor(0, 3)
+        splitter.setStretchFactor(1, 4)
+        outer.addWidget(splitter, 1)
+        outer.addWidget(action)                 # 动作条常驻窗口底部，不用滚动就能点「开始合并」
         self.setCentralWidget(central)
 
         # 菜单
@@ -255,6 +357,49 @@ class MainWindow(QMainWindow):
         self._btn_outdir = btn_outdir
         self._btn_pwfile = btn_pwfile
 
+        # 初始文案（无根目录时动作区即三步引导；不占列表空间）
+        self._update_expect()
+
+    # ================================================================ 高级选项与行内提示
+
+    def _toggle_advanced(self, on: bool) -> None:
+        """展开/收起高级选项（默认收起：首次使用者不被低频项淹没）。
+
+        左栏在滚动区里，展开后内容可能在折叠处下方——自动滚到「高级选项」这一行，
+        否则用户点了开关却看不到任何变化。
+        """
+        self.adv_panel.setVisible(on)
+        self.btn_advanced.setArrowType(Qt.DownArrow if on else Qt.RightArrow)
+        if on:
+            QTimer.singleShot(0, lambda: self.scroll_left.ensureWidgetVisible(
+                self.adv_panel, 0, 40))
+
+    def _set_advanced_expanded(self, on: bool) -> None:
+        self.btn_advanced.setChecked(on)
+        self._toggle_advanced(on)
+
+    def _set_inline_error(self, text: str) -> None:
+        """行内错误：在动作区就近说明原因与下一步，不用弹窗打断（可预期校验）。"""
+        self.lb_inline_error.setText(text)
+        self.lb_inline_error.setVisible(bool(text))
+
+    def _update_expect(self) -> None:
+        """动作区一句话：点之前就知道会发生什么（首次使用者最关键的一行）。"""
+        total = self.lw_targets.count()
+        checked = sum(1 for i in range(total)
+                      if self.lw_targets.item(i).checkState() == Qt.Checked)
+        if not self.ed_root.text().strip() or total == 0:
+            self.lb_expect.setText("① 选根目录 → ② 勾选要合并的文件夹 → ③ 点「开始合并」")
+            return
+        if checked == 0:
+            self.lb_expect.setText("请至少勾选一个文件夹，再点「开始合并」")
+            return
+        if self.cb_dryrun.isChecked():
+            self.lb_expect.setText(
+                f"试运行：只列出 {checked} 个文件夹会合并哪些文件，不生成 PDF")
+            return
+        self.lb_expect.setText(f"将把 {checked} 个文件夹各自合成一册 A4 PDF")
+
     def _connect_signals(self) -> None:
         self._btn_root.clicked.connect(self._pick_root)
         self._btn_outdir.clicked.connect(self._pick_outdir)
@@ -269,6 +414,8 @@ class MainWindow(QMainWindow):
         self.btn_none.clicked.connect(lambda: self._set_targets_checked(False))
         self.btn_start.clicked.connect(self._start)
         self.btn_cancel.clicked.connect(self._cancel)
+        self.btn_advanced.toggled.connect(self._toggle_advanced)
+        self.cb_dryrun.toggled.connect(self._update_expect)
         self.lw_targets.itemChanged.connect(self._update_target_status)
 
     # ================================================================ 设置记忆
@@ -303,6 +450,7 @@ class MainWindow(QMainWindow):
             from core.dpapi import dpapi_unprotect
             self.pt_passwords.setPlainText(
                 "\n".join(dpapi_unprotect(t) for t in tokens))
+        self._set_advanced_expanded(s.get_bool("advanced_expanded", False))
 
     def _save_settings(self) -> None:
         s = self.settings
@@ -319,6 +467,7 @@ class MainWindow(QMainWindow):
         s.set("wps_timeout", self.sp_timeout.value())
         s.set("include_lookalikes", self.cb_lookalike.isChecked())
         s.set("skip_excel", self.cb_skip_excel.isChecked())
+        s.set("advanced_expanded", self.btn_advanced.isChecked())
         s.set("no_prompt", self.cb_no_prompt.isChecked())
         s.set("dry_run", self.cb_dryrun.isChecked())
         checked = self._checked_targets()
@@ -379,10 +528,12 @@ class MainWindow(QMainWindow):
         真实目标标识（相对根目录的路径，根目录记为 "."）存在 UserRole 里，
         传给 core 的 --only 与勾选记忆一律用该标识。
         """
-        root = Path(self.ed_root.text().strip())
-        if not root.is_dir():
+        root_txt = self.ed_root.text().strip()
+        root = Path(root_txt)
+        if not root_txt or not root.is_dir():
             self.lw_targets.clear()
-            self.lb_target_status.setText("请先选择有效的根目录")
+            self.lb_target_status.setText("")
+            self._update_expect()
             return
         out_dir = Path(self.ed_outdir.text().strip()) if self.ra_mode_b.isChecked() else None
         exclude = exclusion_dirs(root, out_dir)
@@ -424,41 +575,55 @@ class MainWindow(QMainWindow):
             self.lw_targets.item(i).setCheckState(Qt.Checked if on else Qt.Unchecked)
 
     def _update_target_status(self) -> None:
+        """目标状态行：一眼看出「已选几个 / 将生成几册」。"""
         total = self.lw_targets.count()
         checked = sum(1 for i in range(total)
                       if self.lw_targets.item(i).checkState() == Qt.Checked)
-        self.lb_target_status.setText(f"已选 {checked}/{total}")
+        if total == 0:
+            self.lb_target_status.setText("")
+        elif checked == 0:
+            self.lb_target_status.setText(f"已选 0/{total} · 请勾选文件夹")
+        else:
+            self.lb_target_status.setText(f"已选 {checked}/{total} · 将生成 {checked} 册")
+        self._update_expect()
 
     def _apply_template_validation(self) -> None:
-        """模板实时校验（3.11.6）：非法字符/未知占位符 → 红框 + 禁用开始。"""
+        """模板实时校验（3.11.6）：非法字符/未知占位符 → 红框 + 行内说明 + 禁用开始。"""
         text = self.ed_template.text()
         errs = MergeConfig(root=Path("."), output_name=text).validate()
         if errs and text:
             self.ed_template.setStyleSheet(
-                "QLineEdit{border:1px solid #c0392b;background:#fdecea;}")
+                f"QLineEdit{{border:1px solid {theme.color('error-border')};"
+                f"background:{theme.color('error-bg')};}}")
             self.ed_template.setToolTip("\n".join(errs))
+            self._set_inline_error("文件名模板有误：" + "；".join(errs))
+            self._template_error_active = True
         else:
             self.ed_template.setStyleSheet("")
             self.ed_template.setToolTip("")
+            if getattr(self, "_template_error_active", False):
+                self._set_inline_error("")
+                self._template_error_active = False
         self.btn_start.setEnabled(not bool(errs))
 
     # ================================================================ 执行
 
     def _build_config(self) -> MergeConfig | None:
+        """把表单收成 MergeConfig；可预期的问题就近行内提示，不用弹窗打断。"""
         root_txt = self.ed_root.text().strip()
         root = Path(root_txt) if root_txt else None
         if root is None or not root.is_dir():
-            QMessageBox.warning(self, "提示", "请先选择有效的根目录。")
+            self._set_inline_error("请先选择有效的根目录：点「浏览…」挑一个文件夹。")
             return None
         checked = self._checked_targets()
         if not checked:
-            QMessageBox.warning(self, "提示", "请至少勾选一个目标文件夹。")
+            self._set_inline_error("请至少勾选一个目标文件夹。")
             return None
         out_dir = None
         if self.ra_mode_b.isChecked():
             t = self.ed_outdir.text().strip()
             if not t:
-                QMessageBox.warning(self, "提示", "模式B 需要填写统一输出目录。")
+                self._set_inline_error("模式B 需要填写统一输出目录（或改回模式A）。")
                 return None
             out_dir = Path(t)
         pws = []
@@ -484,8 +649,9 @@ class MainWindow(QMainWindow):
         )
         errs = cfg.validate()
         if errs:
-            QMessageBox.warning(self, "配置错误", "\n".join(errs))
+            self._set_inline_error("配置有误：" + "；".join(errs))
             return None
+        self._set_inline_error("")
         return cfg
 
     def _start(self) -> None:
@@ -494,12 +660,17 @@ class MainWindow(QMainWindow):
         cfg = self._build_config()
         if cfg is None:
             return
+        self._set_inline_error("")
         self._last_cfg = cfg
         self._set_running(True)
         self._set_state("正在运行…", "busy")
         self.txt_log.clear()
-        self.pb_folder.setRange(0, 0)
-        self.pb_page.setRange(0, 0)
+        for pb in (self.pb_folder, self.pb_page):
+            pb.setTextVisible(False)             # 进度文字在上方小标题里（字体可控、不压在蓝条上）
+            pb.setFixedHeight(18)                # 运行中轨道加高，蓝色进度更醒目
+            pb.setRange(0, 0)
+        self.lb_prog_folder.setText("文件夹进度  准备中…")
+        self.lb_prog_page.setText("页面进度  准备中…")
         self._append_log("info", f"开始处理：{cfg.root}（{'预览' if cfg.dry_run else '合并'}模式）")
 
         self.worker = RunnerWorker(cfg, self)
@@ -545,11 +716,12 @@ class MainWindow(QMainWindow):
 
     def _set_state(self, text: str, kind: str = "idle") -> None:
         """状态栏「当前任务状态」（计划 2.2：引擎探测 / 任务状态 / 版本号）。"""
-        color = {"idle": "#333333", "busy": "#1565c0",
-                 "ok": "#1e7d32", "warn": "#b26a00", "error": "#c62828"}.get(kind, "#333333")
+        colors = {"idle": theme.color("ink"), "busy": theme.color("accent"),
+                  "ok": theme.color("ok"), "warn": theme.color("warn"),
+                  "error": theme.color("error")}
         self.lb_state.setText(text)
         self.lb_state.setToolTip(text)
-        self.lb_state.setStyleSheet(f"color:{color};")
+        self.lb_state.setStyleSheet(f"color:{colors.get(kind, theme.color('ink'))};")
 
     def _set_running(self, running: bool) -> None:
         self.btn_start.setEnabled(not running and not bool(
@@ -560,17 +732,25 @@ class MainWindow(QMainWindow):
         if kind == "folder":
             self.pb_folder.setRange(0, max(total, 1))
             self.pb_folder.setValue(done + 1)
-            self.pb_folder.setFormat(f"文件夹 {done + 1}/{total}：{text}")
+            self.lb_prog_folder.setText(f"文件夹进度  {done + 1}/{total}：{text}")
         elif kind == "page":
-            self.pb_page.setRange(0, 0)
-            self.pb_page.setFormat(text)
+            self.pb_page.setRange(0, 0)          # 页级进度是“进行中”的不定态
+            self.lb_prog_page.setText(f"页面进度  {text}")
+
+    def _reset_progress(self) -> None:
+        """进度归零（空闲/结束后）：轨道清空并收细、小标题回到基础文案。"""
+        self.pb_folder.setRange(0, 1)
+        self.pb_page.setRange(0, 1)
+        self.lb_prog_folder.setText("文件夹进度")
+        self.lb_prog_page.setText("页面进度")
+        for pb in (self.pb_folder, self.pb_page):
+            pb.setFixedHeight(8)
 
     def _on_finished(self, summary) -> None:
         """运行结束：状态栏收尾 + 日志汇总 + 弹出完成总结对话框（M4）。"""
         self._set_running(False)
-        self.pb_folder.setRange(0, 1)
-        self.pb_folder.setValue(1)
-        self.pb_page.setRange(0, 1)
+        self._reset_progress()
+        self.pb_folder.setValue(1)               # 结束后保留满轨道（本次已处理完）
         self.pb_page.setValue(1)
         if summary is None:
             self._append_log("error", "处理异常结束（详见日志）。")
@@ -616,8 +796,9 @@ class MainWindow(QMainWindow):
     # ================================================================ 日志
 
     def _append_log(self, level: str, msg: str) -> None:
-        color = {"info": "#333333", "ok": "#1e7d32", "warn": "#b26a00",
-                 "error": "#c62828"}.get(level, "#333333")
+        color = {"info": theme.color("ink"), "ok": theme.color("ok"),
+                 "warn": theme.color("warn"), "error": theme.color("error")}.get(
+                     level, theme.color("ink"))
         import html as _html
         self.txt_log.appendHtml(
             f'<span style="color:{color};">{_html.escape(msg)}</span>')
@@ -626,7 +807,6 @@ class MainWindow(QMainWindow):
         sb = self.txt_log.verticalScrollBar()
         sb.setValue(sb.maximum())                # 自动滚动到底
         if self.txt_log.blockCount() > LOG_MAX_BLOCKS + LOG_TRIM_AMOUNT:
-            self.txt_log.blockCountChanged.emit  # no-op 占位
             self._trim_log()
 
     def _trim_log(self) -> None:

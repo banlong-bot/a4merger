@@ -1,7 +1,7 @@
 """M5 打包版（frozen exe）验收测试 —— 直接驱动 dist/A4合并助手.exe。
 
 覆盖计划 M5 验收中可在本机自动化验证的部分：
-  · 版本信息（文件属性 1.0.2.0 / 关于对话框数据源）；
+  · 版本信息（文件属性 1.0.3.0 / 关于对话框数据源）；
   · 单实例拦截（同时启动两个实例，第二个快速退出）；
   · 长路径：启动探测 + 中文提示落日志；
   · 打包版绝不触发 pip（core/deps.py frozen 分支的中文报错原文）；
@@ -156,7 +156,7 @@ def copy_samples(dst: Path) -> Path:
 # ------------------------------------------------------------------ 打包属性
 
 def test_exe_version_resource():
-    """文件属性版本 1.0.2.0 与关键字段（计划 3.11.10）。"""
+    """文件属性版本 1.0.3.0 与关键字段（计划 3.11.10）。"""
     out = subprocess.run(
         ["powershell", "-NoProfile", "-Command",
          f"(Get-Item '{EXE}').VersionInfo | "
@@ -165,8 +165,8 @@ def test_exe_version_resource():
         capture_output=True, text=True, encoding="utf-8", errors="replace",
         timeout=60)
     info = json.loads(out.stdout)
-    assert info["FileVersion"] == "1.0.2.0"
-    assert info["ProductVersion"] == "1.0.2.0"
+    assert info["FileVersion"] == "1.0.3.0"
+    assert info["ProductVersion"] == "1.0.3.0"
     assert "A4" in info["FileDescription"]
     assert info["OriginalFilename"] == "A4合并助手.exe"
 

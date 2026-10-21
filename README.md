@@ -19,16 +19,16 @@
 
 ## 快速开始
 
-**直接使用**：从 [Releases](../../releases) 下载 `A4MergeAssistant-v1.0.2.zip`（解压后得到 `A4合并助手.exe`）或 `A4MergeAssistant.exe`（即 `A4合并助手.exe`，下载后改名）。放到浅目录（如 `D:\A4合并助手\`）双击运行。首次启动需解包，等待 3~10 秒属正常。同事向使用说明见 [docs/使用说明-给同事.md](docs/使用说明-给同事.md)。
+**直接使用**：从 [Releases](../../releases) 下载 `A4MergeAssistant-v1.0.3.zip`（解压后得到 `A4合并助手.exe`）或 `A4MergeAssistant.exe`（即 `A4合并助手.exe`，下载后改名）。放到浅目录（如 `D:\A4合并助手\`）双击运行。首次启动需解包，等待 3~10 秒属正常。同事向使用说明见 [docs/使用说明-给同事.md](docs/使用说明-给同事.md)。
 
-> 当前版本 **1.0.2**（2026-10）：**处理级别新增「当前文件夹」**（把根目录整体合成一份 PDF，含根层散文件）；顺带修复「统一输出目录选成根目录时一个素材都收不到」的旧问题。1.0.1 的图标改动保持不变。
+> 当前版本 **1.0.3**（2026-10）：**界面改版**——参照花笺（floral-notepaper）重做：暖纸底 + 竹绿主色的浅色皮肤、白卡片圆角与柔和阴影、无边框圆角窗口 + 自绘标题栏、内置 HarmonyOS Sans SC 字体、轻量动效（可在菜单「界面 → 启用界面动效」关闭）；高级选项折叠、主按钮常驻底部、行内红字提示。功能与 1.0.2 一致（含 Excel 跳过选项）。
 
 **从源码构建**（需要 Python 3.12+）：
 
 ```bash
 pip install -r requirements.txt   # PySide6 / pypdf / Pillow / fpdf2 / msoffcrypto-tool
 python run_gui.py                 # 运行
-python -m pytest -q               # 测试（83 用例，含 GUI 冒烟与打包版验收）
+python -m pytest -q               # 测试（118 用例，含 GUI 冒烟与打包版验收）
 python build/make_icon.py         # 由 assets/app-icon.jpg 生成应用图标 assets/app.ico（换图标时执行）
 python -m PyInstaller --noconfirm --clean --distpath dist --workpath build\pyi_work build\a4merger.spec
 ```

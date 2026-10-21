@@ -386,6 +386,25 @@ Worker 完善：取消时终止 WPS 子进程（core 已支持 cancel 回调）�
   ② 打包版冻结验收里还没有「遇到 Excel 跳过」的自动化用例，发版时应补一例（自动化环境变量
   `A4_AUTOMATION_SKIP_EXCEL=1`、结果字段 `skipped_excel_rows` 已就绪）。
 
+## 维护记录 6（impeccable init：产品事实入库，2026-10）
+
+- **缘由**：用户要求「用 impeccable 给这个项目做 init」——把持久的产品事实（用户、目的、定位、约束）
+  一次性写进 `PRODUCT.md`，供后续设计/评审类工作复用，避免反复询问。
+- **工具**：`impeccable context` 报 `NO_PRODUCT_MD` / `PRODUCT_INIT_REQUIRED`（项目尚无 PRODUCT.md），
+  按 `reference/init.md` 走「探索 → 一轮访谈 → 写文件」，**不生成 DESIGN.md**（init 不管视觉）。
+- **访谈确认（用户三问答复）**：① 用户范围已扩大到**跨部门同事与外部协作同事**（不再只是自己和本组）；
+  ② 核心定位＝**完全离线 + 绿色单 exe、双击即用、无需安装**；③ 硬约束三条＝**全中文界面/日志/注释**、
+  **Windows 10/11 桌面端（不做 macOS/Linux/移动）**、**完全离线（不联网/不云端/不账号）**。
+- **产物**：仓库根新增 `PRODUCT.md`（`impeccable:product-schema 1`），含 Platform（记为 `windows`——
+  原生桌面端，schema 枚举只覆盖 web/ios/android/adaptive，已在该节注明）、Users、Product Purpose、
+  Positioning、Operating Context、Capabilities and Constraints、Brand Commitments、Evidence on Hand、
+  Product Principles（5 条）、Accessibility & Inclusion。**未写 DESIGN.md**（按 init 规则留给
+  `/impeccable document`）；也未记录 `buildPath`（本机无图像生成能力，code-first 是唯一路径），
+  未配置 live 模式（原生桌面应用，无浏览器渲染目标）。
+- **验证**：`PRODUCT.md` 已落盘；不改任何代码，无需重跑 pytest（下次改动前仍以 92 例回归为准）。
+- **下一步**：若要记录现有 Qt 界面体系 → `/impeccable document` 生成 DESIGN.md；
+  若要评审主窗口 → `/impeccable critique app/ui_main.py`。
+
 ## 下一步
 
 项目收官：milestone 全部完成（M0~M6），git tag：baseline-v0, m0~m6, v1.0.0, v1.0.1, v1.0.2。

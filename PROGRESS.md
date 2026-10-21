@@ -555,15 +555,37 @@ Worker 完善：取消时终止 WPS 子进程（core 已支持 cancel 回调）�
   - 无边框窗口的**拖拽手感、贴边分屏、多屏/高 DPI** 只能真机人工验证（离屏自动化覆盖不到 `startSystemMove`）。
   - 建议在 Win10 实机上目视一次字体与阴影（HarmonyOS Sans 在 Win10 的 ClearType 观感与 Win11 略有差异）。
 
+
+## 维护记录 10：发布 v1.0.3（M9 界面改版正式发版）
+
+- **背景**：用户 m03834「可以，提交发布到 github 上吧」——授权把 M9（花笺风格界面改版）按
+  维护记录 5 的流程正式发版：提交新图标 → 提版本号 → 重打包 → tag/Release → push main。
+- **版本号提升 1.0.2 → 1.0.3**（三处代码 + 文档同步）：
+  - `core/__init__.py`：`__version__ = "1.0.3"`（关于对话框 / 状态栏 / 报告 / 诊断包统一取自这里）；
+  - `build/make_version_info.py`：`VERSION = (1, 0, 3, 0)`（exe 文件属性）；
+  - `tests/test_frozen_exe.py`：版本断言改为 `1.0.3.0`（另保留「1.0.2 新增」等历史注释不动）。
+- **新图标入库**：`assets/app-icon.jpg`、`assets/app.ico` 的未提交改动随本版一起提交，
+  关闭维护记录 5 遗留的「exe 内嵌旧图标」问题。
+- **文档同步**：`README.md`（版本段、`A4MergeAssistant-v1.0.3.zip`、测试数 118）、
+  `docs/使用说明-给同事.md`（1.0.3.0 + 界面改版说明）、`PRODUCT.md`（能力基线 v1.0.3、
+  版本事实、118 例）、`docs/M5人工异机验收单.md`（1.0.3 指纹、新增 1.7~1.10 界面项、
+  2.7 Excel 跳过项、回填表补 2.2b/2.7 行）、`build/make_acceptance_kit.py`（指纹锁定 1.0.3）。
+- **重打包**：`dist/A4合并助手.exe` **93,394,732 字节**，
+  SHA256 `3A2ED45CFB87B9B9199BE432E4537E92CAD8603A83435CAB497D79D242CCCA93`，
+  文件版本 **1.0.3.0**，构建时间戳 1792571134.2（spec 已还原源文件）。
+- **验证**：`pytest tests/test_frozen_exe.py` → **11 passed**（版本资源 / 图标 / 无黑框 / 单实例 /
+  长路径 / 无 pip 守卫 / 全流程模式 A·B / 当前文件夹 / 纯 Python 引擎 / 界面字体与动效日志）；
+  开发态全量 118 例在 M9 提交时已全绿（本次只改版本常量与文档，未动业务逻辑）。
+- **发布**：`git tag v1.0.3` → Release「A4 合并助手 1.0.3（花笺界面改版）」，
+  资产 `A4MergeAssistant-v1.0.3.zip` 与 `A4MergeAssistant.exe`；`main` 与 tag 推送 GitHub。
+- **未做 / 待人工**（沿用维护记录 9）：无边框窗口的拖拽、贴边分屏、多屏与高 DPI 只能真机人工确认；
+  Win10 实机建议目视一次 HarmonyOS Sans 的 ClearType 观感与阴影层次。
+
 ## 下一步
 
-项目收官：milestone 全部完成（M0~M6），git tag：baseline-v0, m0~m6, v1.0.0, v1.0.1, v1.0.2。
-后续维护：新需求/缺陷按「改 → pytest tests/ 全绿 → 重打包 → 发新版」节奏走；
-报障收集用诊断包（诊断 zip 会自动带上版本号，能确认同事跑的是哪一版）。
-
-**当前待办（M9 收尾）**：主题 / 无边框窗口 / 测试 / 打包已全部完成（维护记录 9）；pytest tests/ 全量通过、
-	ests/test_frozen_exe.py 11 例通过；本地 dist/A4合并助手.exe 已更新（93,394,416 字节）。
-**未推送、未打 tag、未发 Release**，版本号仍 1.0.2.0；ssets/app-icon.{jpg,ico} 的新图标按维护记录 5 的决定继续不提交。
-等你决定是否发 v1.0.3——若发：提交新图标 → 提版本号 1.0.3（uild/make_version_info.py、core/__init__.py、
-冻结验收断言、README/使用说明、验收单指纹）→ 重打包 → tag → Release → push main。
-另：无边框窗口的拖拽 / 贴边分屏 / 多屏与高 DPI 需在真机上人工点一遍（离屏测试覆盖不到 startSystemMove）。
+- **发布状态**：v1.0.3 已发布（tag `v1.0.3`），发布资产与本地 `dist/A4合并助手.exe` 同源
+  （93,394,732 字节 / SHA256 `3A2ED45C…CCCA93` / 版本 1.0.3.0）。
+- **后续维护**：新需求/缺陷按「改 → `pytest tests/` 全绿 → 重打包 → 提交 `M{编号}: …` → 发新版」的节奏走；
+  发版时先提版本号并同步 README / 使用说明 / 验收单指纹 / `build/make_acceptance_kit.py`。
+- **待人工**：Win10 实机与未装 WPS 机器按 `docs/M5人工异机验收单.md` 走一遍（重点 1.7~1.10 新界面项）；
+  报障继续用诊断包收集（诊断 zip 带版本号）。

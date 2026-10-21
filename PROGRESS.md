@@ -576,8 +576,19 @@ Worker 完善：取消时终止 WPS 子进程（core 已支持 cancel 回调）�
 - **验证**：`pytest tests/test_frozen_exe.py` → **11 passed**（版本资源 / 图标 / 无黑框 / 单实例 /
   长路径 / 无 pip 守卫 / 全流程模式 A·B / 当前文件夹 / 纯 Python 引擎 / 界面字体与动效日志）；
   开发态全量 118 例在 M9 提交时已全绿（本次只改版本常量与文档，未动业务逻辑）。
-- **发布**：`git tag v1.0.3` → Release「A4 合并助手 1.0.3（花笺界面改版）」，
-  资产 `A4MergeAssistant-v1.0.3.zip` 与 `A4MergeAssistant.exe`；`main` 与 tag 推送 GitHub。
+- **发布**：`git tag v1.0.3`（提交 `6c2016a`）→ Release「A4 合并助手 1.0.3（花笺界面改版）」
+  https://github.com/banlong-bot/a4merger/releases/tag/v1.0.3 ，
+  资产 `A4MergeAssistant-v1.0.3.zip`（92,887,281 字节）与 `A4MergeAssistant.exe`（93,394,732 字节）；
+  `main`、tag `v1.0.3` 均已推送，`releases/latest` 已指向 v1.0.3。
+- **网络环境注意（重要）**：本机 **`github.com:443` 直连不通**（git push 报
+  `Failed to connect to github.com:443`），但 `api.github.com`、`raw.githubusercontent.com`、
+  `codeload.github.com` 可直连；本地代理 `http://127.0.0.1:7897` 可用（Clash 类客户端）。
+  因此 git 推送要带代理：`git -c http.proxy=http://127.0.0.1:7897 push origin main`（tag 同理）；
+  `gh` 命令设 `HTTPS_PROXY=http://127.0.0.1:7897` 后 Release 资产上传正常。
+- **验收包同步**：`python build/make_acceptance_kit.py` 已重建桌面 `A4合并助手-验收包`
+  （exe 89.07 MB + 验收单 + 使用说明 + 报障表 + 验收测试数据.zip），指纹与 1.0.3 一致。
+  注意该脚本会调用 `tests/make_samples.py` 重建样例，PDF 元数据会变（提交前
+  `git checkout -- tests/samples` 还原，避免样例文件的无意义 diff）。
 - **未做 / 待人工**（沿用维护记录 9）：无边框窗口的拖拽、贴边分屏、多屏与高 DPI 只能真机人工确认；
   Win10 实机建议目视一次 HarmonyOS Sans 的 ClearType 观感与阴影层次。
 

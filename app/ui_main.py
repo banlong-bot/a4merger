@@ -1,20 +1,23 @@
-"""app/ui_main.py —— 主窗口（M2 骨架 + M3 后台执行 + M4 结果体验）。
+"""app/ui_main.py —— 主窗口（M2 骨架 + M3 后台执行 + M4 结果体验 + M9 花笺无边框窗口）。
 
-包含：参数表单（根目录/目标勾选/输出模式/模板实时校验/引擎/密码）、
-日志区（着色 + 容量截断 + 自动滚动）、两级进度条、
-状态栏（引擎探测 + 任务状态 + 版本）、诊断导出与关于对话框、
+包含：无边框窗口外壳（自绘标题栏 / 边缘缩放 / 最大化）、参数表单（根目录/目标勾选/
+输出模式/模板实时校验/引擎/密码）、日志区（着色 + 容量截断 + 自动滚动）、两级进度条、
+自绘状态栏（引擎探测 + 任务状态 + 版本）、诊断导出与关于对话框、
 完成总结对话框（M4：成功/失败清单、双击定位、导出 TXT、打开输出目录/报告）。
+
+无边框窗口结构见 docs/m9-ui-contract.md：windowShell(圆角) → titleBar → 内容区 → statusBarCustom。
 """
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
-from PySide6.QtCore import Qt, QTimer
-from PySide6.QtGui import QColor
+from PySide6.QtCore import QEvent, QPoint, QPointF, QRectF, QSize, Qt, QTimer
+from PySide6.QtGui import QColor, QIcon, QPainter, QPen, QPixmap
 from PySide6.QtWidgets import (QCheckBox, QComboBox, QDoubleSpinBox, QFileDialog,
                                QFormLayout, QFrame, QGroupBox, QHBoxLayout,
                                QInputDialog, QLabel, QLineEdit, QListWidget,
-                               QListWidgetItem, QMainWindow, QMenuBar, QMessageBox,
+                               QListWidgetItem, QMainWindow, QMenu, QMessageBox,
                                QPlainTextEdit, QProgressBar, QPushButton,
                                QRadioButton, QScrollArea, QSpinBox, QSplitter,
                                QToolButton, QVBoxLayout, QWidget)
@@ -47,64 +50,263 @@ def _level_index(level: int) -> int:
     return values.index(level) if level in values else values.index(DEFAULT_LEVEL)
 
 
+def _window_pixmap(kind: str, color: str) -> QPixmap:
+    """自绘窗口按钮图标（16×16 逻辑像素，2x 位图适配高 DPI）。
+
+    不用字体字形：内置 HarmonyOS Sans 不含 ✕/❐ 等符号，缺字按钮会整颗空白。
+    圆形/圆角矩形都用 1.5px 描边，和「花笺」的细线条一致。
+    """
+    px = QPixmap(32, 32)
+    px.fill(Qt.transparent)
+    px.setDevicePixelRatio(2.0)
+    painter = QPainter(px)
+    painter.setRenderHint(QPainter.Antialiasing, True)
+    pen = QPen(QColor(color))
+    pen.setWidthF(1.5)
+    pen.setCapStyle(Qt.RoundCap)
+    painter.setPen(pen)
+    if kind == "min":
+        painter.drawLine(QPointF(4.0, 8.0), QPointF(12.0, 8.0))
+    elif kind == "max":
+        painter.drawRoundedRect(QRectF(4.0, 4.5, 8.0, 7.0), 1.4, 1.4)
+    elif kind == "restore":
+        painter.drawRoundedRect(QRectF(6.5, 4.5, 5.5, 5.2), 1.2, 1.2)
+        painter.drawRoundedRect(QRectF(4.0, 7.0, 5.5, 5.2), 1.2, 1.2)
+    elif kind == "close":
+        painter.drawLine(QPointF(4.5, 4.5), QPointF(11.5, 11.5))
+        painter.drawLine(QPointF(11.5, 4.5), QPointF(4.5, 11.5))
+    painter.end()
+    return px
+
+
+def _window_icon(kind: str, color: str) -> QIcon:
+    """单色窗口图标（Normal/Active 同一张，颜色切换由 hover 事件直接换 icon）。"""
+    pixmap = _window_pixmap(kind, color)
+    icon = QIcon()
+    icon.addPixmap(pixmap, QIcon.Normal)
+    icon.addPixmap(pixmap, QIcon.Active)
+    return icon
+
+
+class _WindowButton(QToolButton):
+    """标题栏窗口按钮：QPainter 自绘图标，hover 时换用强调色（不依赖字形与 QSS color）。"""
+
+    def __init__(self, kind: str, normal_color: str, active_color: str,
+                 parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._kind = kind
+        self._normal_color = normal_color
+        self._active_color = active_color
+        self._hovered = False
+        self.setCursor(Qt.PointingHandCursor)
+        self.setFixedSize(28, 28)
+        self.setAutoRaise(True)
+        self.setIconSize(QSize(16, 16))
+        self.set_kind(kind)
+
+    def _apply(self, kind: str) -> None:
+        self._kind = kind
+        self._icon_normal = _window_icon(kind, self._normal_color)
+        self._icon_active = _window_icon(kind, self._active_color)
+        self.setIcon(self._icon_active if self._hovered else self._icon_normal)
+
+    def set_kind(self, kind: str) -> None:
+        """最大化 ↔ 还原切换图标（按钮本身不重建，避免丢失焦点/连接）。"""
+        self._apply(kind)
+
+    def enterEvent(self, ev) -> None:             # noqa: N802
+        self._hovered = True
+        self.setIcon(self._icon_active)
+        super().enterEvent(ev)
+
+    def leaveEvent(self, ev) -> None:             # noqa: N802
+        self._hovered = False
+        self.setIcon(self._icon_normal)
+        super().leaveEvent(ev)
+
+
+class _TitleBar(QWidget):
+    """自绘标题栏（40px）：标题 + 菜单按钮 + 最小化/最大化/关闭。
+
+    无边框窗口下移动交给系统托管（QWindow.startSystemMove）——比手写
+    setGeometry 稳：多屏缩放、贴边分屏、最大化拖拽还原都由 Windows 处理。
+    标题栏同时承担顶/左/右边缘的缩放命中（否则顶边会被标题栏吃掉）。
+    """
+
+    def __init__(self, win: "MainWindow") -> None:
+        super().__init__(win)
+        self._win = win
+        self.setObjectName("titleBar")
+        self.setFixedHeight(40)
+        self.setMouseTracking(True)
+
+        lay = QHBoxLayout(self)
+        lay.setContentsMargins(12, 0, 8, 0)
+        lay.setSpacing(8)
+
+        self.lb_title = QLabel("A4 合并助手", self)
+        self.lb_title.setObjectName("titleText")
+        self.lb_sub = QLabel(f"把一组文件夹各自合成一册 A4 PDF · v{__version__}", self)
+        self.lb_sub.setObjectName("titleSub")
+        lay.addWidget(self.lb_title)
+        lay.addWidget(self.lb_sub, 0, Qt.AlignVCenter)
+        lay.addStretch(1)
+
+        # 三个菜单入口（契约要求：文件 / 帮助 / 界面，各自一个 #menuButton）
+        self.btn_file = self._make_menu_button("文件")
+        self.btn_help = self._make_menu_button("帮助")
+        self.btn_view = self._make_menu_button("界面")
+        for btn in (self.btn_file, self.btn_help, self.btn_view):
+            lay.addWidget(btn)
+        self.btn_menu = self.btn_file        # 兼容旧属性名（M9 契约的 menuButton 即菜单入口）
+
+        # 窗口按钮：图标用 QPainter 画，不依赖字体字形；hover 用强调色
+        ink_muted = theme.color("ink-muted")
+        ink = theme.color("ink")
+        surface = theme.color("surface-raised")
+        self.btn_min = _WindowButton("min", ink_muted, ink, self)
+        self.btn_min.setObjectName("winMin")
+        self.btn_min.setToolTip("最小化")
+        self.btn_max = _WindowButton("max", ink_muted, ink, self)
+        self.btn_max.setObjectName("winMax")
+        self.btn_max.setToolTip("最大化")
+        self.btn_close = _WindowButton("close", ink_muted, surface, self)
+        self.btn_close.setObjectName("winClose")
+        self.btn_close.setToolTip("关闭")
+        for btn in (self.btn_min, self.btn_max, self.btn_close):
+            lay.addWidget(btn)
+        self.btn_min.clicked.connect(win.showMinimized)
+        self.btn_max.clicked.connect(win._toggle_maximize)
+        self.btn_close.clicked.connect(win.close)
+
+    def _make_menu_button(self, text: str) -> QToolButton:
+        """标题栏菜单按钮：同一个 #menuButton 样式，各自挂一个 QMenu（稍后 _build_menus 绑）。"""
+        btn = QToolButton(self)
+        btn.setObjectName("menuButton")
+        btn.setText(text)
+        btn.setCursor(Qt.PointingHandCursor)
+        btn.setPopupMode(QToolButton.InstantPopup)
+        return btn
+
+    # ---------------------------------------------------------- 拖拽 / 双击 / 边缘
+    def mousePressEvent(self, ev) -> None:       # noqa: N802
+        if ev.button() != Qt.LeftButton:
+            super().mousePressEvent(ev)
+            return
+        win = self._win
+        edges = win._edges_at(ev.globalPosition().toPoint())
+        if edges:
+            win._start_resize(edges)
+            return
+        handle = win.windowHandle()
+        if handle is not None:
+            handle.startSystemMove()
+
+    def mouseDoubleClickEvent(self, ev) -> None:  # noqa: N802
+        if ev.button() == Qt.LeftButton:
+            self._win._toggle_maximize()
+
+    def mouseMoveEvent(self, ev) -> None:        # noqa: N802
+        self._win._update_edge_cursor(ev.globalPosition().toPoint())
+        super().mouseMoveEvent(ev)
+
+
 class MainWindow(QMainWindow):
     def __init__(self, settings: AppSettings | None = None) -> None:
         super().__init__()
-        theme.apply()                            # 极简浅色皮肤（DESIGN.md；唯一实现处 app/theme.py）
+        theme.apply()                            # 花笺主题（注册内置字体 + 挂 QSS；唯一实现处 app/theme.py）
         self.settings = settings or AppSettings()
         self.setWindowTitle(f"A4 合并助手 v{__version__}")
         self.setWindowIcon(app_icon())        # 标题栏/任务栏图标（与 exe 图标同源，见 app/icon.py）
-        self.resize(1080, 720)
+        # 无边框窗口：圆角外壳由 #windowShell 自绘（docs/m9-ui-contract.md 第五节）
+        self.setAttribute(Qt.WA_TranslucentBackground, True)
+        self.setWindowFlags(Qt.FramelessWindowHint | Qt.Window)
+        self.setMouseTracking(True)              # 边缘命中后换缩放光标
+        self.resize(1080, 800)
+        self.setMinimumSize(920, 680)
         self.worker: RunnerWorker | None = None
         self._last_cfg: MergeConfig | None = None
         self._last_log_file = current_log_file()
         self._last_summary = None
         self._result_dialog: ResultDialog | None = None
         self.smoke = False                       # 冒烟/测试模式：结果对话框不阻塞
+        self._fade_done = False                  # 首帧淡入只做一次
 
         self._build_ui()
+        self._init_motion()                      # 动效开关（设置记忆 + A4_MOTION 环境变量）
         self._connect_signals()
         self._sync_mode_ui()                 # 初始状态同步（build 时 setChecked 早于信号连接）
         self._load_settings()
         self._apply_template_validation()
         self._log_theme_state()
         self.settings.restore_window(self)
+        self._apply_maximized_chrome()           # 还原窗口后刷新外壳状态（普通态）
 
     # ================================================================ UI 构建
 
     def _log_theme_state(self) -> None:
-        """启动日志记录皮肤是否真的加载（打包漏 datas 时能立刻看出来，不静默退化）。"""
+        """启动日志记录皮肤/字体/动效是否真的生效（打包漏 datas 时能立刻看出来，不静默退化）。"""
         css = theme.load_qss()
         if css:
             self._append_log("info", f"界面皮肤：已加载（theme.qss，{len(css)} 字符）")
         else:
             self._append_log("warn", "界面皮肤文件缺失：使用系统默认样式（不影响合并功能）")
+        family = theme.ui_font_family()
+        if "harmony" in family.lower():
+            self._append_log("info", f"界面字体：{family}（内置）")
+        else:
+            self._append_log("warn", f"界面字体：{family}（内置字体未注册，已用系统回退）")
+        self._append_log("info", f"界面动效：{'开' if theme.motion_enabled() else '关'}")
 
     def _build_ui(self) -> None:
-        """构建主界面：顶部一句话用途 + 左（基本设置 / 目标 / 动作 / 高级折叠）+ 右（进度 / 日志）。
+        """构建主界面：无边框外壳（标题栏 + 内容区 + 自绘状态栏）。
 
-        信息分层依据 docs/shape-主窗口极简浅色皮肤.md：
+        内容区分层依据 docs/shape-主窗口极简浅色皮肤.md：
         首次使用者看顶部与动作区，熟练用户只碰基本设置与目标列表，低频项收进高级选项。
         """
         self._template_error_active = False
 
-        central = QWidget()
-        central.setObjectName("central")
-        outer = QVBoxLayout(central)
+        # ---- 无边框窗口根容器：暖纸背景 + 14px 圆角 + 1px 发丝线（QSS #windowShell）
+        shell = QFrame()
+        shell.setObjectName("windowShell")
+        self._shell = shell
+        self._shell_layout = QVBoxLayout(shell)
+        self._shell_layout.setContentsMargins(1, 1, 1, 1)   # 普通态留 1px 描边；最大化时归零
+        self._shell_layout.setSpacing(0)
+
+        title = _TitleBar(self)
+        self.titleBar = title
+        self.menuButton = title.btn_file          # 兼容旧属性名：菜单入口（文件）
+        self.menuHelpButton = title.btn_help
+        self.menuViewButton = title.btn_view
+        self.winMin = title.btn_min
+        self.winMax = title.btn_max
+        self.winClose = title.btn_close
+        self._shell_layout.addWidget(title)
+
+        body = QWidget()
+        body.setObjectName("windowBody")
+        outer = QVBoxLayout(body)
         outer.setContentsMargins(16, 12, 16, 8)
         outer.setSpacing(10)
 
-        # ------------------------------------------------ 顶部：名称 + 一句话用途
+        # ------------------------------------------------ 顶部标题已上移到自绘标题栏
+        # 内容区不再放「A4 合并助手」大标题与副标题（会与 titleBar 重复）；对象保留但隐藏，
+        # 兼容旧测试/外部引用（appTitle/appSubtitle 的 objectName 不变）。
         head = QHBoxLayout()
         head.setSpacing(12)
         lb_title = QLabel("A4 合并助手")
         lb_title.setObjectName("appTitle")
         lb_sub = QLabel("把一组文件夹各自合成一册 A4 PDF")
         lb_sub.setObjectName("appSubtitle")
+        lb_title.setVisible(False)
+        lb_sub.setVisible(False)
         head.addWidget(lb_title)
         head.addWidget(lb_sub, 0, Qt.AlignBottom)
         head.addStretch(1)
         outer.addLayout(head)
+        self.appTitle = lb_title
+        self.appSubtitle = lb_sub
 
         splitter = QSplitter(Qt.Horizontal)
         splitter.setChildrenCollapsible(False)
@@ -167,6 +369,7 @@ class MainWindow(QMainWindow):
         self.lw_targets = QListWidget(self)
         self.lw_targets.setSelectionMode(QListWidget.NoSelection)
         self.lw_targets.setMinimumHeight(110)
+        self.lw_targets.setMaximumHeight(300)      # 目标多时列表内部滚动，卡片不再被拉成空白大块
         tv.addWidget(self.lw_targets, 1)
         hb = QHBoxLayout()
         self.btn_all = QPushButton("全选")
@@ -178,7 +381,7 @@ class MainWindow(QMainWindow):
         hb.addStretch(1)
         hb.addWidget(self.lb_target_status)
         tv.addLayout(hb)
-        lv.addWidget(gb_targets, 1)
+        lv.addWidget(gb_targets)
 
         # ---- 主按钮区（固定在窗口底部；整屏唯一实心按钮，点之前知道会发生什么）
         action = QFrame()
@@ -287,6 +490,7 @@ class MainWindow(QMainWindow):
 
         self.adv_panel.setVisible(False)
         lv.addWidget(self.adv_panel)
+        lv.addStretch(1)                            # 卡片顶部对齐：内容不足时不要拉高成空白
 
         scroll = QScrollArea()
         self.scroll_left = scroll
@@ -332,27 +536,51 @@ class MainWindow(QMainWindow):
         splitter.setStretchFactor(1, 4)
         outer.addWidget(splitter, 1)
         outer.addWidget(action)                 # 动作条常驻窗口底部，不用滚动就能点「开始合并」
-        self.setCentralWidget(central)
+        self._shell_layout.addWidget(body, 1)
 
-        # 菜单
-        mb = self.menuBar()
-        m_file = mb.addMenu("文件")
-        m_file.addAction("导出诊断包…", self._export_diagnostics)
-        m_file.addSeparator()
-        m_file.addAction("退出", self.close)
-        m_help = mb.addMenu("帮助")
-        m_help.addAction("关于", self._show_about)
-
-        # 状态栏：引擎探测 + 长路径状态 + 任务状态 + 版本号（计划 2.2 / 3.11.3 / 3.11.10）
+        # ---- 自绘状态栏（替代 QMainWindow.statusBar）：引擎 / 长路径 / 任务状态 / 版本
+        status = QFrame()
+        status.setObjectName("statusBarCustom")
+        status.setFixedHeight(30)
+        sh = QHBoxLayout(status)
+        sh.setContentsMargins(12, 0, 12, 0)
+        sh.setSpacing(14)
         self.lb_engine = QLabel("引擎：探测中…")
         self.lb_longpath = QLabel("长路径：检测中…")
         self.lb_state = QLabel("就绪")
         self.lb_version = QLabel(f"v{__version__}")
-        sb = self.statusBar()
-        sb.addWidget(self.lb_engine)
-        sb.addWidget(self.lb_longpath)
-        sb.addWidget(self.lb_state, 1)          # 任务状态占满中间
-        sb.addPermanentWidget(self.lb_version)
+        sh.addWidget(self.lb_engine)
+        sh.addWidget(self.lb_longpath)
+        sh.addWidget(self.lb_state, 1)          # 任务状态占满中间
+        sh.addWidget(self.lb_version)
+        self.statusBarCustom = status            # 供测试/外部断言（不再创建原生状态栏）
+        self._shell_layout.addWidget(status)
+
+        self.setCentralWidget(shell)
+
+        # ---- 标题栏三个菜单入口（替代原生 menuBar）：文件 / 帮助 / 界面
+        m_file = QMenu(self)
+        m_file.addAction("导出诊断包…", self._export_diagnostics)
+        m_file.addSeparator()
+        m_file.addAction("退出", self.close)
+        self.titleBar.btn_file.setMenu(m_file)
+        m_help = QMenu(self)
+        m_help.addAction("使用说明", self._show_usage)
+        m_help.addAction("关于", self._show_about)
+        self.titleBar.btn_help.setMenu(m_help)
+        m_ui = QMenu(self)
+        self.act_motion = m_ui.addAction("启用界面动效")
+        self.act_motion.setCheckable(True)
+        self.act_motion.setChecked(theme.motion_enabled())
+        self.titleBar.btn_view.setMenu(m_ui)
+        self.menuFile = m_file
+        self.menuHelp = m_help
+        self.menuView = m_ui
+
+        # 卡片阴影（静态 + 悬停加深；关闭动效时 theme 内部直接落终态）
+        for card in (gb_base, gb_targets, gb_conv, gb_enc, action):
+            theme.attach_card_shadow(card)
+
         self._btn_root = btn_root
         self._btn_outdir = btn_outdir
         self._btn_pwfile = btn_pwfile
@@ -366,22 +594,37 @@ class MainWindow(QMainWindow):
         """展开/收起高级选项（默认收起：首次使用者不被低频项淹没）。
 
         左栏在滚动区里，展开后内容可能在折叠处下方——自动滚到「高级选项」这一行，
-        否则用户点了开关却看不到任何变化。
+        否则用户点了开关却看不到任何变化。动效开启时高度渐变，收起后再隐藏。
         """
-        self.adv_panel.setVisible(on)
+        if theme.motion_enabled():
+            self.adv_panel.setVisible(True)      # 先可见才能看到高度动画
+            theme.animate_expand(self.adv_panel, on)
+            if not on:                           # 收起：等动画结束再隐藏，避免留白
+                QTimer.singleShot(280, self._hide_advanced_if_collapsed)
+        else:
+            self.adv_panel.setVisible(on)
         self.btn_advanced.setArrowType(Qt.DownArrow if on else Qt.RightArrow)
         if on:
             QTimer.singleShot(0, lambda: self.scroll_left.ensureWidgetVisible(
                 self.adv_panel, 0, 40))
 
+    def _hide_advanced_if_collapsed(self) -> None:
+        if not self.btn_advanced.isChecked():
+            self.adv_panel.setVisible(False)
+
     def _set_advanced_expanded(self, on: bool) -> None:
-        self.btn_advanced.setChecked(on)
-        self._toggle_advanced(on)
+        """设置展开状态：状态真变化时走 toggled 信号（只动画一次），否则直接应用。"""
+        if self.btn_advanced.isChecked() != on:
+            self.btn_advanced.setChecked(on)
+        else:
+            self._toggle_advanced(on)
 
     def _set_inline_error(self, text: str) -> None:
         """行内错误：在动作区就近说明原因与下一步，不用弹窗打断（可预期校验）。"""
         self.lb_inline_error.setText(text)
         self.lb_inline_error.setVisible(bool(text))
+        if text and theme.motion_enabled():
+            theme.fade_widget(self.lb_inline_error)
 
     def _update_expect(self) -> None:
         """动作区一句话：点之前就知道会发生什么（首次使用者最关键的一行）。"""
@@ -399,6 +642,23 @@ class MainWindow(QMainWindow):
                 f"试运行：只列出 {checked} 个文件夹会合并哪些文件，不生成 PDF")
             return
         self.lb_expect.setText(f"将把 {checked} 个文件夹各自合成一册 A4 PDF")
+
+    def _init_motion(self) -> None:
+        """界面动效开关：默认开；设置里关过或 A4_MOTION=0 时同步给 theme。
+
+        初始化时屏蔽 toggled 信号，避免刚建窗就把默认值写进设置文件。
+        """
+        on = self.settings.get_bool("motion", True) and theme.motion_enabled()
+        self.act_motion.blockSignals(True)
+        self.act_motion.setChecked(on)
+        self.act_motion.blockSignals(False)
+        theme.set_motion_enabled(on)
+        self.act_motion.toggled.connect(self._on_motion_toggled)
+
+    def _on_motion_toggled(self, on: bool) -> None:
+        theme.set_motion_enabled(on)             # 关闭后新动画立即落终态（含进行中的）
+        self.settings.set("motion", on)
+        self._append_log("info", f"界面动效：{'开' if on else '关'}")
 
     def _connect_signals(self) -> None:
         self._btn_root.clicked.connect(self._pick_root)
@@ -450,7 +710,13 @@ class MainWindow(QMainWindow):
             from core.dpapi import dpapi_unprotect
             self.pt_passwords.setPlainText(
                 "\n".join(dpapi_unprotect(t) for t in tokens))
-        self._set_advanced_expanded(s.get_bool("advanced_expanded", False))
+        # 高级选项展开状态记忆：初始化只在「需要展开」时走动画，收起态保持隐藏（避免启动闪烁）
+        expanded = s.get_bool("advanced_expanded", False)
+        if expanded:
+            self._set_advanced_expanded(True)
+        else:
+            self.btn_advanced.setChecked(False)
+            self.adv_panel.setVisible(False)
 
     def _save_settings(self) -> None:
         s = self.settings
@@ -716,7 +982,7 @@ class MainWindow(QMainWindow):
 
     def _set_state(self, text: str, kind: str = "idle") -> None:
         """状态栏「当前任务状态」（计划 2.2：引擎探测 / 任务状态 / 版本号）。"""
-        colors = {"idle": theme.color("ink"), "busy": theme.color("accent"),
+        colors = {"idle": theme.color("ink"), "busy": theme.color("bamboo"),
                   "ok": theme.color("ok"), "warn": theme.color("warn"),
                   "error": theme.color("error")}
         self.lb_state.setText(text)
@@ -731,7 +997,7 @@ class MainWindow(QMainWindow):
     def _on_progress(self, kind: str, done: int, total: int, text: str) -> None:
         if kind == "folder":
             self.pb_folder.setRange(0, max(total, 1))
-            self.pb_folder.setValue(done + 1)
+            theme.animate_progress(self.pb_folder, done + 1)
             self.lb_prog_folder.setText(f"文件夹进度  {done + 1}/{total}：{text}")
         elif kind == "page":
             self.pb_page.setRange(0, 0)          # 页级进度是“进行中”的不定态
@@ -750,8 +1016,8 @@ class MainWindow(QMainWindow):
         """运行结束：状态栏收尾 + 日志汇总 + 弹出完成总结对话框（M4）。"""
         self._set_running(False)
         self._reset_progress()
-        self.pb_folder.setValue(1)               # 结束后保留满轨道（本次已处理完）
-        self.pb_page.setValue(1)
+        theme.animate_progress(self.pb_folder, 1)   # 结束后保留满轨道（本次已处理完）
+        theme.animate_progress(self.pb_page, 1)
         if summary is None:
             self._append_log("error", "处理异常结束（详见日志）。")
             self._set_state("运行异常结束，详见日志", "error")
@@ -841,10 +1107,131 @@ class MainWindow(QMainWindow):
             "把每位股东/客户文件夹里的 PDF、图片、Word、Excel、PPT、文本"
             "按顺序合并成统一的 A4 PDF。"
             "<br><br>更新方式：整包替换 exe（无自动更新）。"
-            f"<br>Qt {qt_ver}<br>依赖：{deps}")
+            f"<br>Qt {qt_ver}<br>依赖：{deps}<br><br>"
+            "界面字体：HarmonyOS Sans SC（Copyright 2021 Huawei Device Co., Ltd.，"
+            "按其字体许可协议随本软件分发）<br>"
+            "许可协议全文见程序目录 fonts/LICENSE_HarmonyOS_Sans.txt"
+            "（源码仓库 fonts/ 下同名文件）")
+
+    def _show_usage(self) -> None:
+        """帮助 → 使用说明：优先打开程序目录/仓库里的使用说明，找不到则弹三步摘要。"""
+        roots: list[Path] = []
+        if getattr(sys, "frozen", False):
+            roots.append(Path(sys.executable).resolve().parent)
+        roots.append(Path(__file__).resolve().parent.parent)
+        for root in roots:
+            for rel in ("docs/使用说明-给同事.md", "使用说明-给同事.md"):
+                doc = root / rel
+                if doc.exists():
+                    from PySide6.QtCore import QUrl
+                    from PySide6.QtGui import QDesktopServices
+                    QDesktopServices.openUrl(QUrl.fromLocalFile(str(doc)))
+                    return
+        QMessageBox.information(
+            self, "使用说明",
+            "① 点「浏览…」选择根目录\n"
+            "② 勾选要合并的文件夹\n"
+            "③ 点「开始合并」\n\n"
+            "更多说明见程序目录的「使用说明-给同事.md」（或项目仓库 docs/ 下同名文件）。")
+
+    # ================================================================ 无边框窗口外壳
+
+    EDGE_MARGIN = 6                              # 边缘缩放命中宽度（像素）
+
+    def _edges_at(self, pos: QPoint) -> Qt.Edges:
+        """窗口边缘命中（pos 为全局坐标）；最大化/全屏时不允许缩放。"""
+        if self.isMaximized() or self.isFullScreen():
+            return Qt.Edges()
+        local = self.mapFromGlobal(pos)
+        r = self.rect()
+        m = self.EDGE_MARGIN
+        edges = Qt.Edges()
+        if local.x() <= m:
+            edges |= Qt.Edge.LeftEdge
+        elif local.x() >= r.width() - m:
+            edges |= Qt.Edge.RightEdge
+        if local.y() <= m:
+            edges |= Qt.Edge.TopEdge
+        elif local.y() >= r.height() - m:
+            edges |= Qt.Edge.BottomEdge
+        return edges
+
+    def _start_resize(self, edges: Qt.Edges) -> None:
+        handle = self.windowHandle()
+        if handle is not None and edges:
+            handle.startSystemResize(edges)      # Windows 原生缩放（含多屏 DPI）
+
+    def _update_edge_cursor(self, pos: QPoint) -> None:
+        """边缘悬停换缩放光标（最大化时恢复箭头）。"""
+        if self.isMaximized():
+            self.unsetCursor()
+            return
+        edges = self._edges_at(pos)
+        pair = ((Qt.Edge.LeftEdge, Qt.Edge.TopEdge),
+                (Qt.Edge.RightEdge, Qt.Edge.TopEdge),
+                (Qt.Edge.LeftEdge, Qt.Edge.BottomEdge),
+                (Qt.Edge.RightEdge, Qt.Edge.BottomEdge))
+        cursors = (Qt.SizeFDiagCursor, Qt.SizeBDiagCursor,
+                   Qt.SizeBDiagCursor, Qt.SizeFDiagCursor)
+        for (a, b), cur in zip(pair, cursors):
+            if edges & a and edges & b:
+                self.setCursor(cur)
+                return
+        if edges & (Qt.Edge.LeftEdge | Qt.Edge.RightEdge):
+            self.setCursor(Qt.SizeHorCursor)
+        elif edges & (Qt.Edge.TopEdge | Qt.Edge.BottomEdge):
+            self.setCursor(Qt.SizeVerCursor)
+        else:
+            self.unsetCursor()
+
+    def _toggle_maximize(self) -> None:
+        if self.isMaximized():
+            self.showNormal()
+        else:
+            self.showMaximized()
+
+    def _apply_maximized_chrome(self) -> None:
+        """最大化/还原时同步外壳：圆角归零、去掉 1px 描边。
+
+        `maximized` 是 QMainWindow 内建只读属性（动态属性设不上），QSS 用祖先选择器
+        `QMainWindow[maximized="true"] QFrame#windowShell` 读取；theme 里负责重刷样式。
+        """
+        maximized = self.isMaximized()
+        theme.set_maximized_chrome(self, maximized)
+        self._shell_layout.setContentsMargins(0, 0, 0, 0) if maximized else \
+            self._shell_layout.setContentsMargins(1, 1, 1, 1)
+        # 最大化 → 还原图标（两个错开的方框）；还原 → 单方框
+        self.winMax.set_kind("restore" if maximized else "max")
+        self.winMax.setToolTip("还原" if maximized else "最大化")
+
+    # ---- 边缘缩放（主窗口自身命中；无边框窗口没有原生边框可用）
+    def mousePressEvent(self, ev) -> None:       # noqa: N802
+        if ev.button() == Qt.LeftButton:
+            edges = self._edges_at(ev.globalPosition().toPoint())
+            if edges:
+                self._start_resize(edges)
+                return
+        super().mousePressEvent(ev)
+
+    def mouseMoveEvent(self, ev) -> None:        # noqa: N802
+        self._update_edge_cursor(ev.globalPosition().toPoint())
+        super().mouseMoveEvent(ev)
+
+    def leaveEvent(self, ev) -> None:            # noqa: N802
+        self.unsetCursor()
+        super().leaveEvent(ev)
+
+    def changeEvent(self, ev) -> None:           # noqa: N802
+        if ev.type() == QEvent.WindowStateChange:
+            self._apply_maximized_chrome()
+        super().changeEvent(ev)
 
     def showEvent(self, ev) -> None:             # noqa: N802
         super().showEvent(ev)
+        if not self._fade_done:
+            self._fade_done = True
+            if theme.motion_enabled():
+                theme.fade_in(self._shell)       # 首帧淡入（无边框窗口出现更柔和）
         QTimer.singleShot(50, self._probe_engines)
         QTimer.singleShot(80, self._check_long_paths)
 

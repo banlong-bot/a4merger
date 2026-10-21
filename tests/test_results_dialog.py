@@ -14,6 +14,7 @@ import pytest
 pytest.importorskip("PySide6")
 
 from PySide6.QtCore import Qt
+from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QDialog, QDialogButtonBox
 
 from app import results_dialog as rd
@@ -22,6 +23,20 @@ from core.types import FileFailure, FolderResult, MergeConfig, RunSummary
 
 
 _APP = None          # 保持 QApplication 引用：被回收会拖垮后续模块的事件循环
+
+
+def wait_until(pred, timeout_ms: int = 2000, step_ms: int = 20) -> bool:
+    """推进事件循环直到 pred 为真：进度条/折叠动画是异步的，不能同步断言。"""
+    import time
+
+    deadline = time.monotonic() + timeout_ms / 1000.0
+    while time.monotonic() < deadline:
+        QApplication.processEvents()
+        if pred():
+            return True
+        QTest.qWait(step_ms)
+    QApplication.processEvents()
+    return bool(pred())
 
 
 @pytest.fixture(scope="module", autouse=True)
@@ -275,7 +290,8 @@ def test_main_window_shows_result_dialog(qapp, scenario, monkeypatch):
     win._append_log = lambda level, msg: None         # 不写日志文件
     win._on_finished(scenario)
     assert "成功 3/5 个目标" in win.lb_state.text()
-    assert win.pb_folder.value() == 1
+    # 进度条走平滑动画（M9 产品行为）：验证动画结束后落到终值，不要求瞬时值
+    assert wait_until(lambda: win.pb_folder.value() == 1)
     dlg = win._result_dialog                          # 对话框已构建并保持引用
     assert dlg is not None and dlg.tb_success.rowCount() == 3
     assert dlg.tb_failures.rowCount() == 3
@@ -310,7 +326,8 @@ def test_status_bar_widgets(qapp):
     assert win.lb_state.text() == "正在运行…"
     win._probe_engines()
     assert win.lb_engine.text().startswith("引擎：")
-    assert win.statusBar() is not None
+    assert win.statusBarCustom is not None
+    assert win.statusBarCustom.objectName() == "statusBarCustom"
     win.deleteLater()
     qapp.processEvents()
 

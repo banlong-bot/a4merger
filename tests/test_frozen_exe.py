@@ -239,6 +239,8 @@ def test_frozen_smoke_and_startup_hints():
     assert "长路径" in text or "260" in text
     assert "引擎探测" in text and "WPS" in text
     assert "界面皮肤：已加载" in text          # M8：theme.qss 必须真的进了打包（datas）
+    assert "界面字体：HarmonyOS Sans SC" in text   # M9：内置字体必须真的进了打包（datas）且注册成功
+    assert "界面动效：" in text                    # M9：动效开关状态必须落启动日志
 
 
 def test_frozen_no_pip_guard(workdir):

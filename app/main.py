@@ -163,6 +163,11 @@ def _schedule_automation(win, app) -> None:
 
     from PySide6.QtCore import QTimer
 
+    if os.environ.get("A4_AUTOMATION_MOTION") == "0":
+        # 自动验收可关动效：截图/结果比对确定性更好（A4_AUTOMATION_MOTION=0 透传）
+        from app import theme
+        theme.set_motion_enabled(False)
+
     report_path = Path(os.environ.get("A4_AUTOMATION_REPORT",
                                       str(Path.cwd() / "自动化验收结果.json")))
     root = os.environ.get("A4_AUTOMATION_ROOT", "")

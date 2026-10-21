@@ -13,8 +13,10 @@ import pytest
 pytest.importorskip("PySide6")
 
 from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QApplication
+from PySide6.QtTest import QTest
+from PySide6.QtWidgets import QApplication, QFrame, QToolButton
 
+from app import theme
 from app.diagnostics import build_diagnostic_zip, setup_file_logging
 from app.settings import AppSettings
 from app.ui_main import MainWindow
@@ -35,6 +37,21 @@ def win(qapp, tmp_path):
     w.lw_targets.blockSignals(True)
     yield w
     w.deleteLater()
+
+
+@pytest.fixture()
+def shown_win(qapp):
+    """真正 show 出来的窗口：双击标题栏 / 最大化这类交互依赖事件循环。"""
+    w = MainWindow()
+    w.show()
+    w.activateWindow()
+    qapp.processEvents()
+    QTest.qWait(80)
+    qapp.processEvents()
+    yield w
+    w.close()
+    w.deleteLater()
+    qapp.processEvents()
 
 
 def test_skip_excel_option_default_off(win):
@@ -152,3 +169,81 @@ def test_file_logging(tmp_path):
     import logging
     logging.getLogger("a4merger").info("单元测试日志行")
     assert "单元测试日志行" in log_path.read_text(encoding="utf-8")
+
+
+# ---------------------------------------------------------------- M9 无边框窗口
+def test_window_shell_controls(win):
+    """无边框窗口外壳：titleBar/menuButton/窗口按钮/自绘状态栏都在，且窗口按钮用自绘图标。"""
+    assert win.centralWidget().objectName() == "windowShell"
+    assert isinstance(win.findChild(QFrame, "windowShell"), QFrame)
+    assert win.titleBar.objectName() == "titleBar"
+    assert win.titleBar.height() == 40
+
+    # 菜单入口拆成多个 #menuButton（数量按 >= 2 断言，避免锁死实现细节）
+    menu_buttons = win.findChildren(QToolButton, "menuButton")
+    assert len(menu_buttons) >= 2
+
+    for btn, name in ((win.winMin, "winMin"), (win.winMax, "winMax"),
+                      (win.winClose, "winClose")):
+        assert btn.objectName() == name
+        assert not btn.icon().isNull(), f"{name} 没有图标（自绘图标丢失）"
+
+    # 自绘状态栏替代 QMainWindow.statusBar()，原四个标签都保留
+    assert win.statusBarCustom.objectName() == "statusBarCustom"
+    for label in (win.lb_engine, win.lb_longpath, win.lb_state, win.lb_version):
+        assert label is not None
+
+
+def test_titlebar_double_click_maximize(shown_win, qapp):
+    """双击标题栏：最大化 ⇄ 还原；外壳同步 winMaximized 属性（QSS 圆角归零依赖它）。"""
+    win = shown_win
+    shell = win.findChild(QFrame, "windowShell")
+    assert not win.isMaximized()
+    assert shell.property("winMaximized") in (False, "false", None)
+
+    QTest.mouseDClick(win.titleBar, Qt.LeftButton, pos=win.titleBar.rect().center())
+    deadline = 40
+    while deadline and not win.isMaximized():
+        QTest.qWait(50)
+        qapp.processEvents()
+        deadline -= 1
+    assert win.isMaximized(), "双击标题栏没有最大化"
+    assert win.property("maximized") is True          # Qt 内建属性，窗口真的最大化了
+    assert shell.property("winMaximized") in (True, "true")
+    assert 'winMaximized="true"' in theme.load_qss()
+
+    QTest.mouseDClick(win.titleBar, Qt.LeftButton, pos=win.titleBar.rect().center())
+    deadline = 40
+    while deadline and win.isMaximized():
+        QTest.qWait(50)
+        qapp.processEvents()
+        deadline -= 1
+    assert not win.isMaximized(), "再次双击没有还原"
+    assert shell.property("winMaximized") in (False, "false", None)
+
+
+def test_motion_menu_toggle(win, qapp):
+    """界面菜单的「启用界面动效」：状态与 theme 一致，切换写设置（用 AppSettings 复原）。"""
+    s = AppSettings()
+    old_setting = s.get_bool("motion", True)
+    old_theme = theme.motion_enabled()
+    try:
+        assert win.act_motion.isCheckable()
+        assert win.act_motion.isChecked() is old_theme
+
+        win.act_motion.setChecked(not old_theme)
+        qapp.processEvents()
+        new_state = theme.motion_enabled()
+        assert new_state is (not old_theme)
+        assert AppSettings().get_bool("motion", not old_theme) is new_state
+    finally:
+        win.act_motion.setChecked(old_theme)
+        theme.set_motion_enabled(old_theme)
+        s.set("motion", old_setting)
+        qapp.processEvents()
+
+
+def test_window_min_height_sane(win):
+    """无边框改造后窗口最小高度不膨胀（≤760，1080p 笔记本可用）。"""
+    assert win.minimumHeight() <= 760
+    assert win.minimumSizeHint().height() <= 780

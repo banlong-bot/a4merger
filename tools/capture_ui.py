@@ -3,7 +3,8 @@
 用法（在仓库根执行）：
     python tools/capture_ui.py --prefix main-after --root tests/samples/pure_pdf
 
-产物：docs/shots/<prefix>-empty.png、<prefix>-filled.png、<prefix>-advanced.png。
+产物：docs/shots/<prefix>-empty.png、<prefix>-filled.png、<prefix>-advanced.png、
+<prefix>-maximized.png（最大化态，验证圆角/边距归零）。
 渲染：默认用 Windows 原生平台（字体/样式与真机一致）；无桌面环境可设 A4_SHOT_OFFSCREEN=1
 退化为 offscreen（会额外加载仓库自带中文字体，避免截图全是方块）。
 设置隔离：临时 A4_SETTINGS_DIR，且每次运行前清空，保证三张图都是「首次打开」的确定性状态。
@@ -31,6 +32,8 @@ def main(argv: list[str] | None = None) -> int:
         os.environ.pop("QT_QPA_PLATFORM", None)
     else:
         os.environ["QT_QPA_PLATFORM"] = "offscreen"
+    # 截图默认关动效：不等淡入/展开动画，保证三张图确定性（需要动画帧时设 A4_SHOT_MOTION=1）
+    os.environ.setdefault("A4_MOTION", "0")
     settings_dir = REPO / ".tmpx" / "shot-settings"
     settings_dir.mkdir(parents=True, exist_ok=True)
     for stale in settings_dir.glob("*.ini"):        # 清掉上次截图留下的表单/折叠状态
@@ -52,18 +55,21 @@ def main(argv: list[str] | None = None) -> int:
         if font_file.exists():
             QFontDatabase.addApplicationFont(str(font_file))
     win = MainWindow()
-    win.resize(1080, 720)
+    # 无边框窗口：尺寸含自绘标题栏(40)+状态栏(30)，比 M8 的 1080×720 高一点才不挤压日志区
+    win.resize(1080, 820)
     win.show()
-    app.processEvents()
+    for _ in range(3):                             # 让无边框外壳/滚动区完成首轮布局
+        app.processEvents()
 
     def shot(name: str, scroll: int | None = 0) -> None:
         """scroll=0 回顶部；None 保持当前滚动位置（展开高级选项后要看到面板）。"""
         if scroll is not None and hasattr(win, "scroll_left"):
             bar = win.scroll_left.verticalScrollBar()
             bar.setValue(0 if scroll == 0 else bar.maximum())
-        app.processEvents()
+        for _ in range(2):
+            app.processEvents()
         path = outdir / f"{args.prefix}-{name}.png"
-        win.grab().save(str(path))
+        win.grab().save(str(path))                 # 无边框窗口：含自绘标题栏与状态栏
         print(f"已保存：{path}")
 
     shot("empty")
@@ -76,6 +82,13 @@ def main(argv: list[str] | None = None) -> int:
         win.btn_advanced.setChecked(True)
         app.processEvents()
         shot("advanced", scroll=None)
+    # 最大化态：验证圆角/边距归零与「还原」图标（无边框窗口铺满工作区）
+    win.showMaximized()
+    for _ in range(4):
+        app.processEvents()
+    shot("maximized")
+    win.showNormal()
+    app.processEvents()
     win.close()
     app.processEvents()
     # Qt 原生平台在解释器退出期偶发 0xC0000409（与打包版同类）；截图已落盘，直接结束进程

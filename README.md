@@ -12,8 +12,8 @@
 - **加密文件**：弹窗输入密码、常用密码列表（每行一个）、遇加密直接跳过并记录；记住的密码使用 Windows DPAPI 本机加密
 - **Excel 跳过选项**：勾选后 `.xls/.xlsx` 不参与合并、**不计入失败**，结果清单与报告单列「跳过的 Excel」；默认关闭，行为与旧版一致
 - **结果清单**：成功/失败/同名/忽略四类列表（启用 Excel 跳过时多一列「跳过的 Excel」），双击任意一行在资源管理器定位；一键打开输出目录与合并报告、导出 TXT
-- **界面**：极简浅色统一皮肤（`app/theme.qss`，色值以 `DESIGN.md` 为准）；高级选项默认折叠、
-主按钮「开始合并」常驻窗口底部；可预期的问题用行内红字提示，不弹窗打断
+- **界面**：花笺风格浅色皮肤（暖纸底 + 竹绿主色，白卡片、圆角与柔和阴影，`app/theme.qss`，色值以 `DESIGN.md` 为准）；高级选项默认折叠、
+主按钮「开始合并」常驻窗口底部；可预期的问题用行内红字提示，不弹窗打断；支持无边框圆角窗口、自绘标题栏、轻动效（菜单「界面 → 启用界面动效」可关）
 - **诊断支持**：菜单「文件 → 导出诊断包…」自动打包日志、配置（密码打码）、引擎探测结果
 - **稳健性**：单实例防重复启动、长路径支持、临时目录自愈、取消安全（不产生半成品）
 
@@ -44,7 +44,7 @@ assets/  应用图标（源图 app-icon.jpg + 生成的 app.ico）
 build/   打包 spec、图标生成脚本与一键验收脚本
 tests/   pytest 测试（含冻结版 exe 验收：版本资源、图标、无黑框、单实例、全流程真实合并）
 docs/    使用说明、开发计划、里程碑验收记录、界面截图（shots/）
-fonts/   内置字体（Noto Sans CJK）
+fonts/   内置字体（界面：HarmonyOS Sans SC；纯 Python 文本转 PDF：Noto Sans CJK）
 ```
 
 ## 开发里程碑
@@ -54,3 +54,9 @@ M1–M6 完整开发记录见 [PROGRESS.md](PROGRESS.md)；M6 已完成灰度试
 ## 开源协议
 
 本项目遵循开源协议发布，详见 [LICENSE](LICENSE)。
+
+### 第三方字体
+
+界面字体 **HarmonyOS Sans SC** 版权归 Huawei Device Co., Ltd. 所有，按《HarmonyOS Sans 字体许可协议》随本软件免费分发（不单独售卖字体），
+完整协议文本见 [fonts/LICENSE_HarmonyOS_Sans.txt](fonts/LICENSE_HarmonyOS_Sans.txt)。
+纯 Python 文本转 PDF 使用的 **Noto Sans CJK SC** 采用 SIL Open Font License 1.1。

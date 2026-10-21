@@ -44,6 +44,11 @@ try:
         binaries=[],
         datas=[
             (str(REPO / "fonts" / "NotoSansCJKsc-Regular.otf"), "fonts"),
+            # 界面字体（M9：花笺风格，HarmonyOS Sans SC，可变字重）＋其许可证（随包分发需保留版权声明）
+            (str(REPO / "fonts" / "HarmonyOS_Sans_SC.ttf"), "fonts"),
+            (str(REPO / "fonts" / "LICENSE_HarmonyOS_Sans.txt"), "fonts"),
+            # 主题图标（复选框对勾/单选圆点/下拉箭头，theme.qss 用 $assets 引用，M9）
+            (str(REPO / "app" / "assets"), "app/assets"),
             (str(REPO / "app" / "theme.qss"), "app"),      # 主窗口皮肤 QSS（app/theme.py 运行期读取）
             (str(ICON_FILE), "assets"),
         ],

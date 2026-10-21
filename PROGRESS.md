@@ -488,13 +488,82 @@ Worker 完善：取消时终止 WPS 子进程（core 已支持 cancel 回调）�
 - **未做**：没有发版（版本号仍 1.0.2）、没有 push——沿用维护记录 5 的节奏，等你决定是否出 1.0.3
   （届时要把 78,497,916 字节这个本地 exe 与 Release 里同版本号但字节不同的旧 exe 区分开）。
 
+## 维护记录 9（M9：参照「花笺」重做视觉 —— 暖纸+竹绿、无边框圆角窗口、阴影+动效、内置 HarmonyOS Sans 字体，2026-10-21）
+
+- **缘由**：用户（m03461）要求参照开源项目 **花笺 floral-notepaper**（https://github.com/Achilng/floral-notepaper ，MIT）
+  的 UI 样式重做界面，「可以增加一些阴影和动效，换一个更合适的字体」。四项经确认取舍：
+  ① 配色 = **全套花笺**（暖纸底 + 竹绿主色，主色由蓝改绿）；② 字体 = **内置 HarmonyOS Sans SC**（与参考同款）；
+  ③ 动效 = **轻量全套 + 设置开关**；④ 窗口外框 = **无边框圆角 + 自绘标题栏**（不要系统标题栏）。
+- **协作方式**：按 Agent Teams 分工（Lead 定接口契约 + 收口；theme-artisan 做主题；window-shell 做窗口；
+  test-sentinel 做测试）。接口契约落盘在 `docs/m9-ui-contract.md`（API / token / objectName / 分工写权限），
+  三人写权限互斥，Lead 统一跑全量、打包、提交。
+- **视觉定稿（`app/theme.py` TOKENS，17 色 + 圆角/间距/动效）**：paper `#F6F3EC`、paper-deep `#EDE7DA`、
+  surface `#FFFDF8`、surface-raised `#FFFFFF`、border `#E3DCCD`、ink `#2B2A26`、ink-muted `#6A6559`、
+  **bamboo `#2D5A3D`** / bamboo-deep `#1F4229` / bamboo-soft `#E6EEE4`、ok `#2E7D4F` / warn `#8F5A14` /
+  error `#B3261E`；圆角 6/10/14px + pill 22px；间距 4/8/12/16/24；动效 120/180/240ms。
+  阴影三档 `card/raised/float`（QGraphicsDropShadowEffect，模糊 26/34/46、不透明度 54/66/80），悬停加深。
+- **字体与许可（合规硬要求）**：`fonts/HarmonyOS_Sans_SC.ttf`（20,617,156 字节，可变字重）＋
+  `fonts/LICENSE_HarmonyOS_Sans.txt`（3315 字符协议全文）。协议 2.1 要求「软件内显著声明」→
+  在**关于对话框**写明 HarmonyOS Sans SC / Copyright 2021 Huawei Device Co., Ltd. / 许可文件路径；
+  README 增加「第三方字体」小节；`build/a4merger.spec` datas 同时打包字体与许可证。
+  协议同时禁止改字形、禁止单独售卖字体——本仓库只原样随软件分发，符合要求。
+- **主题实现（`app/theme.py` 412 行 / `app/theme.qss` 约 14.5KB）**：
+  `load_qss()` 支持 `$token` 与 `$assets` 两种占位符（长名优先替换；图标目录缺失时自动删除 9 条
+  `image: url(...)` 降级为纯色块，不抛异常）；`apply()` 幂等并 `QLocale.setDefault(zh_CN)`（本机区域 zh_MO
+  下 Qt 6.12 会把 QSpinBox 的 600 显示成汉字数码「〩〩」）；动画对象由模块级 `_ALIVE` 保活；
+  `A4_MOTION=0` 或界面开关关闭时 `fade_in/fade_widget/animate_progress/animate_expand/attach_card_shadow`
+  全部同步落终态（不创建动画对象）。
+  新增 `app/assets/`：check-white / check-dark / radio-dot / chevron-down 四个透明 PNG（约 1.1KB，Pillow 4×超采样）。
+  （生成脚本暂放 `.tmpx/make_assets.py`，未入库；如需交接可挪到 `tools/`。）
+- **无边框窗口（`app/ui_main.py`，约 1264 行）**：`FramelessWindowHint|Window` + `WA_TranslucentBackground`，
+  centralWidget = `QFrame#windowShell`（14px 圆角 + 1px 发丝线，普通态留 1px 外沿、最大化归零）。
+  结构：40px 自绘 `#titleBar`（标题 + 副标题 + 「文件/帮助/界面」三个 `#menuButton` + 最小化/最大化/关闭）
+  → 内容区（原 head/QSplitter/actionBar；内容区重复的大标题已隐藏，对象保留）→ 自绘 `#statusBarCustom`
+  （原 `lb_engine/lb_longpath/lb_state/lb_version` 全保留；**不再调用 `menuBar()` / `statusBar()`**）。
+  拖拽 `QWindow.startSystemMove()`；缩放 6px 边缘命中 `startSystemResize(edges)`（四边 + 四角，hover 变光标）；
+  双击标题栏最大化/还原；窗口按钮改 **QPainter 自绘 1.5px 线框图标**（内置字体缺 ✕/❐ 字形，不能靠文字）。
+- **动效接线（全部受 `motion_enabled()` 门控）**：首帧窗口淡入 180ms；高级选项 `animate_expand`（240ms，
+  收起动画结束后才 hide）；进度条 `animate_progress`（240ms）；卡片 `attach_card_shadow` 悬停阴影加深；
+  行内错误 `fade_widget`。菜单「界面 → 启用界面动效」勾选项（`AppSettings` key `motion`，默认开）。
+  启动日志三行：「界面皮肤：已加载（theme.qss，N 字符）」「界面字体：HarmonyOS Sans SC（内置）」
+  「界面动效：开/关」——打包漏资产时能立刻发现。
+- **视觉复核后修掉的问题**：① 复选框勾选态被 QSS 化成实心绿方块（Qt 只要给 indicator 设 background
+  就不再画系统勾形）→ 自带 14×14 透明勾图标；② 下拉框原生 drop-down 在圆角边框上压灰底直角块 →
+  透明 `::drop-down` + `chevron-down.png`（教训：**不要写 `QComboBox:hover::down-arrow`**，Qt 对这种
+  「父伪状态+子控件」组合选择器解析异常，会叠画两个箭头）；③ 主按钮 999px 圆角被 Qt 忽略 → `radius-pill-px=22px`；
+  ④ 进度条 8pt 百分比文字被裁 → max-height 16→18px；⑤ 目标文件夹卡片被拉成空白大块 → 列表 maxHeight 300
+  + 左栏顶部对齐（`lv.addStretch(1)`）；⑥ 卡片阴影用户觉得偏淡 → 阴影三档整体上抬一档（M9 终稿值见上）。
+- **Qt 关键坑（已写进注释，后续别再踩）**：`QWidget.maximized` 是**内建只读属性**，
+  `setProperty("maximized", ...)` 被静默忽略、`property("maximized")` 恒 False →
+  最大化圆角改用自定义动态属性 **`winMaximized`**（`QFrame#windowShell[winMaximized="true"]`），
+  同时保留 `QMainWindow[maximized="true"] QFrame#windowShell` 兜底选择器。
+- **测试**：`pytest tests/` 全量 **118 passed**（原 103 例；本轮重写 `tests/test_ui_theme.py` 22 例、
+  `tests/test_gui_smoke.py` 13 例，`tests/test_results_dialog.py` 把 `statusBar()` 断言改为 `statusBarCustom`、
+  进度断言改为等动画终值）。测试侧踩到的两处误判：① QSS **注释里的字面「$token」**被当成未替换 token
+  （改为先剥注释再扫描）；② 平滑动画是异步的，同步断言瞬时值必然失败（改为等待终值，并另加
+  `test_animations_terminal_when_motion_off` 覆盖关动效时的同步落终态）。`test_worker_password_flow`
+  在全量负载下曾偶发超时（单跑 1.2s 通过），最终轮未复现，未削弱该用例。
+- **打包与验收**：`build/a4merger.spec` datas 增加 `(app/assets, "app/assets")`、HarmonyOS 字体与许可证；
+  重打包 `dist/A4合并助手.exe` **93,394,416 字节**，SHA256 `E087A036015EA45341B619AB2BD85AF3E2CEA2269D6A2D739FB8C0123EBA8C6E`
+  （比 M8 的 78.5MB 大 14.8MB，主要是内置字体）。`tests/test_frozen_exe.py` 增加断言
+  「界面字体：HarmonyOS Sans SC」「界面动效：」必须出现在打包版启动日志里（防止字体/资产漏打包）。
+  截图：`docs/shots/main-m9-{empty,filled,advanced,maximized}.png`（native 2x 渲染）。
+- **未做 / 待人工**：
+  - **未发版、未 push、未打 tag**：版本号仍 1.0.2.0；`assets/app-icon.{jpg,ico}` 的未提交改动继续保持不动
+    （沿用维护记录 5 的决定）。若发 v1.0.3：提交图标 + 提版本号（`build/make_version_info.py`、`core/__init__.py`、
+    冻结验收断言、README/说明、验收单指纹）+ tag/Release + push。
+  - 无边框窗口的**拖拽手感、贴边分屏、多屏/高 DPI** 只能真机人工验证（离屏自动化覆盖不到 `startSystemMove`）。
+  - 建议在 Win10 实机上目视一次字体与阴影（HarmonyOS Sans 在 Win10 的 ClearType 观感与 Win11 略有差异）。
+
 ## 下一步
 
 项目收官：milestone 全部完成（M0~M6），git tag：baseline-v0, m0~m6, v1.0.0, v1.0.1, v1.0.2。
 后续维护：新需求/缺陷按「改 → pytest tests/ 全绿 → 重打包 → 发新版」节奏走；
 报障收集用诊断包（诊断 zip 会自动带上版本号，能确认同事跑的是哪一版）。
 
-**当前待办（M7 收尾）**：代码 + 测试 + 本地 exe 已完成（维护记录 5），`git commit ac61e56`，
-**未推送、未打 tag、未发 Release**。等你决定是否发 v1.0.3——若发：提交新图标 + 提版本号 1.0.3
-（`build/make_version_info.py` 与 `core/__init__.py`、冻结验收断言、README/说明、验收单指纹）→
-补打包版「遇到 Excel 跳过」验收用例 → 重打包 → tag → Release → 推送 main。
+**当前待办（M9 收尾）**：主题 / 无边框窗口 / 测试 / 打包已全部完成（维护记录 9）；pytest tests/ 全量通过、
+	ests/test_frozen_exe.py 11 例通过；本地 dist/A4合并助手.exe 已更新（93,394,416 字节）。
+**未推送、未打 tag、未发 Release**，版本号仍 1.0.2.0；ssets/app-icon.{jpg,ico} 的新图标按维护记录 5 的决定继续不提交。
+等你决定是否发 v1.0.3——若发：提交新图标 → 提版本号 1.0.3（uild/make_version_info.py、core/__init__.py、
+冻结验收断言、README/使用说明、验收单指纹）→ 重打包 → tag → Release → push main。
+另：无边框窗口的拖拽 / 贴边分屏 / 多屏与高 DPI 需在真机上人工点一遍（离屏测试覆盖不到 startSystemMove）。
